@@ -534,6 +534,16 @@ if st.session_state.child_info:
                 marker=dict(size=20, color='red', symbol='star', line=dict(color='darkred', width=2))
             ))
 
+        # Calculate Y-axis range to show all percentiles properly
+        # Get min from 3rd percentile and max from 97th percentile in visible range
+        visible_data = growth_height[growth_height['age_months'].between(x_range[0], x_range[1])]
+        if not visible_data.empty:
+            y_min = visible_data['p3'].min() * 0.95  # Add 5% padding below
+            y_max = visible_data['p97'].max() * 1.02  # Add 2% padding above
+        else:
+            y_min = None
+            y_max = None
+
         fig_height.update_layout(
             title=f"Height-for-Age ({selected_gender})",
             xaxis_title="Age (months)",
@@ -542,6 +552,7 @@ if st.session_state.child_info:
             showlegend=True,
             height=500,
             xaxis=dict(range=x_range),
+            yaxis=dict(range=[y_min, y_max] if y_min else None),
             # Mobile optimization
             font=dict(size=12),
             margin=dict(l=50, r=20, t=50, b=50)
@@ -587,6 +598,15 @@ if st.session_state.child_info:
                 marker=dict(size=20, color='red', symbol='star', line=dict(color='darkred', width=2))
             ))
 
+        # Calculate Y-axis range for weight chart
+        visible_weight_data = growth_weight[growth_weight['age_months'].between(x_range[0], x_range[1])]
+        if not visible_weight_data.empty:
+            y_min_weight = visible_weight_data['p3'].min() * 0.90  # Add 10% padding below
+            y_max_weight = visible_weight_data['p97'].max() * 1.05  # Add 5% padding above
+        else:
+            y_min_weight = None
+            y_max_weight = None
+
         fig_weight.update_layout(
             title=f"Weight-for-Age ({selected_gender})",
             xaxis_title="Age (months)",
@@ -595,6 +615,7 @@ if st.session_state.child_info:
             showlegend=True,
             height=500,
             xaxis=dict(range=x_range),
+            yaxis=dict(range=[y_min_weight, y_max_weight] if y_min_weight else None),
             # Mobile optimization
             font=dict(size=12),
             margin=dict(l=50, r=20, t=50, b=50)
