@@ -793,9 +793,4 @@ st.markdown("""
   - Both height and weight data available for full age range
 
 Both datasets use LMS (Lambda-Mu-Sigma) parameters for percentile calculations.
-
-**Note:** This app is for educational and informational purposes.
-For clinical use and medical decisions, please consult healthcare professionals and refer to official resources:
-- [WHO Child Growth Standards](https://www.who.int/tools/child-growth-standards)
-- [CDC Growth Charts](https://www.cdc.gov/growthcharts/)
 """)
