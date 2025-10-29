@@ -849,8 +849,14 @@ if st.session_state.child_info:
                 y_min_weight = None
                 y_max_weight = None
 
+            # Determine age range text for title
+            if chart_weight_source == 'CDC':
+                weight_age_range = "2-20 years"
+            else:  # WHO
+                weight_age_range = "0-10 years"  # WHO weight-for-age covers 0-10 years
+
             fig_weight.update_layout(
-                title=f"Weight-for-Age ({selected_gender}) - {chart_weight_source} - {age_group if current_age <= 120 else '0-10 years'}",
+                title=f"Weight-for-Age ({selected_gender}) - {chart_weight_source} - {weight_age_range}",
                 xaxis_title="Age (months)",
                 yaxis_title="Weight (kg)",
                 hovermode='closest',
@@ -942,8 +948,14 @@ if st.session_state.child_info:
             else:  # CDC
                 bmi_x_range = [24, 240]  # CDC: 2-20 years
 
+            # Determine BMI age range based on data source
+            if st.session_state.data_source == 'WHO':
+                bmi_age_range = "5-19 years"  # WHO BMI-for-age covers 5-19 years
+            else:  # CDC
+                bmi_age_range = "2-20 years"  # CDC BMI-for-age covers 2-20 years
+
             fig_bmi.update_layout(
-                title=f"BMI-for-Age ({selected_gender}) - {st.session_state.data_source} - {age_group}",
+                title=f"BMI-for-Age ({selected_gender}) - {st.session_state.data_source} - {bmi_age_range}",
                 xaxis_title="Age (months)",
                 yaxis_title="BMI (kg/m²)",
                 hovermode='closest',
