@@ -10,29 +10,38 @@ from io import BytesIO
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-# Load WHO Growth Standards from CSV files (based on official WHO LMS parameters)
-# Data source: WHO Child Growth Standards (2006) and Growth Reference (2007)
+# Load Growth Standards from CSV files
+# Data sources:
+# - WHO Child Growth Standards (2006) and Growth Reference (2007) - Global/multi-ethnic
+# - CDC Growth Charts (2000) - US population
 
 @st.cache_data
-def load_who_data_from_csv(filename):
-    """Load WHO data from CSV file with caching"""
-    filepath = os.path.join('who_data', filename)
+def load_growth_data_from_csv(filename, data_source='WHO'):
+    """Load growth data from CSV file with caching"""
+    folder = 'who_data' if data_source == 'WHO' else 'cdc_data'
+    filepath = os.path.join(folder, filename)
     if os.path.exists(filepath):
         return pd.read_csv(filepath)
     else:
-        st.error(f"WHO data file not found: {filename}")
+        st.error(f"{data_source} data file not found: {filename}")
         return pd.DataFrame()
 
-def get_who_data(gender):
+def get_height_data(gender, data_source='WHO'):
     """
-    Returns WHO growth percentiles for height-for-age (in cm)
-    Ages are in months (0-228 months = 0-19 years)
-    Loaded from official WHO LMS-based data
+    Returns growth percentiles for height-for-age (in cm)
+    WHO: 0-228 months (0-19 years)
+    CDC: 24-240 months (2-20 years)
     """
-    if gender == "Male":
-        df = load_who_data_from_csv('boys_height_full.csv')
-    else:  # Female
-        df = load_who_data_from_csv('girls_height_full.csv')
+    if data_source == 'WHO':
+        if gender == "Male":
+            df = load_growth_data_from_csv('boys_height_full.csv', 'WHO')
+        else:  # Female
+            df = load_growth_data_from_csv('girls_height_full.csv', 'WHO')
+    else:  # CDC
+        if gender == "Male":
+            df = load_growth_data_from_csv('boys_height_cdc.csv', 'CDC')
+        else:  # Female
+            df = load_growth_data_from_csv('girls_height_cdc.csv', 'CDC')
 
     if df.empty:
         return df
@@ -40,16 +49,22 @@ def get_who_data(gender):
     # Return relevant columns
     return df[['age_months', 'p3', 'p15', 'p50', 'p85', 'p97']]
 
-def get_who_weight_data(gender):
+def get_weight_data(gender, data_source='WHO'):
     """
-    Returns WHO growth percentiles for weight-for-age (in kg)
-    Ages are in months (0-120 months for weight data availability)
-    Loaded from official WHO LMS-based data
+    Returns growth percentiles for weight-for-age (in kg)
+    WHO: 0-120 months (0-10 years)
+    CDC: 24-240 months (2-20 years)
     """
-    if gender == "Male":
-        df = load_who_data_from_csv('boys_weight_full.csv')
-    else:  # Female
-        df = load_who_data_from_csv('girls_weight_full.csv')
+    if data_source == 'WHO':
+        if gender == "Male":
+            df = load_growth_data_from_csv('boys_weight_full.csv', 'WHO')
+        else:  # Female
+            df = load_growth_data_from_csv('girls_weight_full.csv', 'WHO')
+    else:  # CDC
+        if gender == "Male":
+            df = load_growth_data_from_csv('boys_weight_cdc.csv', 'CDC')
+        else:  # Female
+            df = load_growth_data_from_csv('girls_weight_cdc.csv', 'CDC')
 
     if df.empty:
         return df
@@ -57,18 +72,26 @@ def get_who_weight_data(gender):
     # Return relevant columns
     return df[['age_months', 'p3', 'p15', 'p50', 'p85', 'p97']]
 
-def get_who_statistics(gender):
+def get_growth_statistics(gender, data_source='WHO'):
     """
-    Returns WHO growth statistics (mean and SD) for Z-score calculation
+    Returns growth statistics (mean and SD) for Z-score calculation
     This includes both height and weight statistics loaded from CSV
     """
     # Load height data
-    if gender == "Male":
-        height_df = load_who_data_from_csv('boys_height_full.csv')
-        weight_df = load_who_data_from_csv('boys_weight_full.csv')
-    else:
-        height_df = load_who_data_from_csv('girls_height_full.csv')
-        weight_df = load_who_data_from_csv('girls_weight_full.csv')
+    if data_source == 'WHO':
+        if gender == "Male":
+            height_df = load_growth_data_from_csv('boys_height_full.csv', 'WHO')
+            weight_df = load_growth_data_from_csv('boys_weight_full.csv', 'WHO')
+        else:
+            height_df = load_growth_data_from_csv('girls_height_full.csv', 'WHO')
+            weight_df = load_growth_data_from_csv('girls_weight_full.csv', 'WHO')
+    else:  # CDC
+        if gender == "Male":
+            height_df = load_growth_data_from_csv('boys_height_cdc.csv', 'CDC')
+            weight_df = load_growth_data_from_csv('boys_weight_cdc.csv', 'CDC')
+        else:
+            height_df = load_growth_data_from_csv('girls_height_cdc.csv', 'CDC')
+            weight_df = load_growth_data_from_csv('girls_weight_cdc.csv', 'CDC')
 
     if height_df.empty or weight_df.empty:
         return pd.DataFrame()
@@ -83,12 +106,13 @@ def get_who_statistics(gender):
 
     return stats
 
-def calculate_z_score(age_months, measurement, measurement_type, gender):
+def calculate_z_score(age_months, measurement, measurement_type, gender, data_source='WHO'):
     """
     Calculate Z-score for a given measurement
     measurement_type: 'height' or 'weight'
+    data_source: 'WHO' or 'CDC'
     """
-    stats = get_who_statistics(gender)
+    stats = get_growth_statistics(gender, data_source)
 
     # Interpolate to get mean and SD for exact age
     f_mean = interpolate.interp1d(stats['age_months'], stats[f'{measurement_type}_mean'],
@@ -145,7 +169,7 @@ def calculate_age_in_months(birth_date, measurement_date):
 
     return total_months
 
-def generate_pdf_report(child_info, today_measurement, data_points, height_fig, weight_fig):
+def generate_pdf_report(child_info, today_measurement, data_points, height_fig, weight_fig, data_source='WHO'):
     """Generate PDF report with Z-scores and charts"""
     buffer = BytesIO()
 
@@ -167,10 +191,10 @@ Birth Date: {child_info['birth_date'].strftime('%Y-%m-%d')}
         if today_measurement:
             # Calculate Z-scores
             height_z, height_perc, height_mean, height_sd = calculate_z_score(
-                today_measurement['age_months'], today_measurement['height'], 'height', today_measurement['gender']
+                today_measurement['age_months'], today_measurement['height'], 'height', today_measurement['gender'], data_source
             )
             weight_z, weight_perc, weight_mean, weight_sd = calculate_z_score(
-                today_measurement['age_months'], today_measurement['weight'], 'weight', today_measurement['gender']
+                today_measurement['age_months'], today_measurement['weight'], 'weight', today_measurement['gender'], data_source
             )
 
             height_interp, _ = interpret_z_score(height_z, 'height')
@@ -214,7 +238,8 @@ Weight Analysis:
                     fontfamily='monospace', transform=fig.transFigure)
 
         # Add footer
-        footer = f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nData source: WHO Child Growth Standards (2006) and Growth Reference (2007)"
+        data_source_text = "WHO Child Growth Standards (2006) and Growth Reference (2007)" if data_source == "WHO" else "CDC Growth Charts (2000) for US population"
+        footer = f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nData source: {data_source_text}"
         plt.text(0.1, 0.05, footer, fontsize=8, verticalalignment='bottom',
                 style='italic', transform=fig.transFigure)
 
@@ -256,10 +281,10 @@ st.set_page_config(
         'About': "Child Growth Tracker with WHO Standards (0-19 years)"
     }
 )
-st.title("👶 Child Growth Tracker with WHO Percentiles")
+st.title("👶 Child Growth Tracker")
 
 st.markdown("""
-Track child growth from birth to 19 years with WHO Child Growth Standards and Reference Data.
+Track child growth with WHO or CDC growth standards and reference data.
 Charts automatically scale based on your child's age for better visualization.
 **Mobile-friendly interface for easy tracking on the go!**
 """)
@@ -271,9 +296,27 @@ if 'child_info' not in st.session_state:
     st.session_state.child_info = None
 if 'today_measurement' not in st.session_state:
     st.session_state.today_measurement = None
+if 'data_source' not in st.session_state:
+    st.session_state.data_source = 'WHO'
 
 # Sidebar for Child Information
 with st.sidebar:
+    st.header("⚙️ Data Source")
+
+    data_source = st.selectbox(
+        "Growth Charts",
+        ["WHO", "CDC"],
+        key="data_source_select",
+        help="WHO: Global multi-ethnic population (0-19 years)\nCDC: US population (2-20 years)"
+    )
+    st.session_state.data_source = data_source
+
+    if data_source == "WHO":
+        st.info("📊 WHO Child Growth Standards (2006) and Growth Reference (2007)")
+    else:
+        st.info("📊 CDC Growth Charts (2000) for US population")
+
+    st.divider()
     st.header("👤 Child Information")
 
     child_gender = st.selectbox("Gender", ["Male", "Female"], key="child_gender")
@@ -374,7 +417,7 @@ if st.session_state.today_measurement:
     with col1:
         st.subheader("📏 Height Analysis")
         height_z, height_perc, height_mean, height_sd = calculate_z_score(
-            today['age_months'], today['height'], 'height', today['gender']
+            today['age_months'], today['height'], 'height', today['gender'], st.session_state.data_source
         )
         height_interp, height_status = interpret_z_score(height_z, 'height')
 
@@ -397,7 +440,7 @@ if st.session_state.today_measurement:
     with col2:
         st.subheader("⚖️ Weight Analysis")
         weight_z, weight_perc, weight_mean, weight_sd = calculate_z_score(
-            today['age_months'], today['weight'], 'weight', today['gender']
+            today['age_months'], today['weight'], 'weight', today['gender'], st.session_state.data_source
         )
         weight_interp, weight_status = interpret_z_score(weight_z, 'weight')
 
@@ -421,11 +464,11 @@ if st.session_state.today_measurement:
 
 # Main content - Visualizations
 if st.session_state.child_info:
-    st.header(f"📊 Growth Charts - {st.session_state.child_info['gender']}")
+    st.header(f"📊 Growth Charts - {st.session_state.child_info['gender']} ({st.session_state.data_source})")
 
     selected_gender = st.session_state.child_info['gender']
-    who_height = get_who_data(selected_gender)
-    who_weight = get_who_weight_data(selected_gender)
+    growth_height = get_height_data(selected_gender, st.session_state.data_source)
+    growth_weight = get_weight_data(selected_gender, st.session_state.data_source)
 
     # Calculate child's current age for dynamic chart scaling
     if st.session_state.today_measurement:
@@ -460,8 +503,8 @@ if st.session_state.child_info:
 
         for percentile in ['p3', 'p15', 'p50', 'p85', 'p97']:
             fig_height.add_trace(go.Scatter(
-                x=who_height['age_months'],
-                y=who_height[percentile],
+                x=growth_height['age_months'],
+                y=growth_height[percentile],
                 mode='lines',
                 name=names[percentile],
                 line=dict(color=colors[percentile], width=2 if percentile == 'p50' else 1),
@@ -510,11 +553,11 @@ if st.session_state.child_info:
     with col2:
         fig_weight = go.Figure()
 
-        # Add WHO percentile lines
+        # Add percentile lines
         for percentile in ['p3', 'p15', 'p50', 'p85', 'p97']:
             fig_weight.add_trace(go.Scatter(
-                x=who_weight['age_months'],
-                y=who_weight[percentile],
+                x=growth_weight['age_months'],
+                y=growth_weight[percentile],
                 mode='lines',
                 name=names[percentile],
                 line=dict(color=colors[percentile], width=2 if percentile == 'p50' else 1),
@@ -570,7 +613,8 @@ if st.session_state.child_info:
             st.session_state.today_measurement,
             st.session_state.data_points,
             fig_height,
-            fig_weight
+            fig_weight,
+            st.session_state.data_source
         )
 
         # Prepare filename
@@ -598,17 +642,17 @@ else:
     st.info("👈 Please save child information in the sidebar to get started!")
 
     # Show sample charts
-    st.subheader("Example: WHO Growth Standards")
+    st.subheader(f"Example: {st.session_state.data_source} Growth Standards")
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown("**Height-for-Age Chart (Male)**")
-        who_sample = get_who_data("Male")
+        sample_height = get_height_data("Male", st.session_state.data_source)
         fig_sample = go.Figure()
         for percentile in ['p3', 'p15', 'p50', 'p85', 'p97']:
             fig_sample.add_trace(go.Scatter(
-                x=who_sample['age_months'],
-                y=who_sample[percentile],
+                x=sample_height['age_months'],
+                y=sample_height[percentile],
                 mode='lines',
                 name=percentile.upper(),
                 opacity=0.7
@@ -622,12 +666,12 @@ else:
 
     with col2:
         st.markdown("**Weight-for-Age Chart (Male)**")
-        who_weight_sample = get_who_weight_data("Male")
+        sample_weight = get_weight_data("Male", st.session_state.data_source)
         fig_weight_sample = go.Figure()
         for percentile in ['p3', 'p15', 'p50', 'p85', 'p97']:
             fig_weight_sample.add_trace(go.Scatter(
-                x=who_weight_sample['age_months'],
-                y=who_weight_sample[percentile],
+                x=sample_weight['age_months'],
+                y=sample_weight[percentile],
                 mode='lines',
                 name=percentile.upper(),
                 opacity=0.7
@@ -642,10 +686,14 @@ else:
 # Footer
 st.markdown("---")
 st.markdown("""
-**Data Source:** This app uses official WHO Child Growth Standards (2006) and WHO Growth Reference Data (5-19 years, 2007)
-based on LMS (Lambda-Mu-Sigma) parameters from WHO publications.
+**Data Sources:**
+- **WHO:** WHO Child Growth Standards (2006, 0-5 years) and WHO Growth Reference (2007, 5-19 years) based on global multi-ethnic populations
+- **CDC:** CDC Growth Charts (2000, 2-20 years) based on US population data
+
+Both datasets use LMS (Lambda-Mu-Sigma) parameters for percentile calculations.
 
 **Note:** This app is for educational and informational purposes.
-For clinical use and medical decisions, please consult healthcare professionals and refer to the official
-[WHO Child Growth Standards](https://www.who.int/tools/child-growth-standards).
+For clinical use and medical decisions, please consult healthcare professionals and refer to official resources:
+- [WHO Child Growth Standards](https://www.who.int/tools/child-growth-standards)
+- [CDC Growth Charts](https://www.cdc.gov/growthcharts/)
 """)

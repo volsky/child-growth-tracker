@@ -1,20 +1,25 @@
-# Child Growth Tracker with WHO Percentiles
+# Child Growth Tracker
 
-A Streamlit web application for tracking child growth measurements and comparing them with WHO (World Health Organization) Child Growth Standards.
+A Streamlit web application for tracking child growth measurements and comparing them with WHO or CDC growth standards.
 
 ## Features
 
+- **Multiple Data Sources**: Choose between WHO (global/multi-ethnic) or CDC (US population) growth charts
 - **Child Profile**: Store child's gender and birth date for automatic age calculation
 - **Birth Date Tracking**: Automatically calculates age in months based on birth date and measurement date
 - **Today's Measurement**: Dedicated section for current measurements with date picker
 - **Z-Score Analysis**: Calculate and display Z-scores and percentiles for today's measurements
 - **Clinical Interpretation**: Automatic interpretation of measurements (normal, underweight, overweight, stunted, etc.)
-- **WHO Standards**: Compare measurements against WHO growth percentiles (3rd, 15th, 50th, 85th, 97th)
+- **Growth Percentiles**: Compare measurements against growth percentiles (3rd, 15th, 50th, 85th, 97th)
 - **Dual Charts**: Visualize both height-for-age and weight-for-age on separate interactive charts
 - **Multi-point Tracking**: Add multiple historical measurements to track growth trends over time
 - **Visual Differentiation**: Today's measurements displayed as red stars, historical data as blue circles
 - **Gender-specific**: Separate charts and percentiles for male and female children
-- **Age Range**: Supports children from 0-60 months (0-5 years)
+- **Age Range**:
+  - WHO: 0-228 months (0-19 years)
+  - CDC: 24-240 months (2-20 years)
+- **PDF Export**: Download comprehensive growth reports with Z-scores and charts
+- **Mobile-Friendly**: Optimized for use on mobile devices
 
 ## Installation
 
@@ -32,25 +37,30 @@ streamlit run child_growth_app.py
 
 2. The app will open in your default web browser
 
-3. **Setup Child Profile** (Sidebar - Top Section):
+3. **Select Data Source** (Sidebar - Top Section):
+   - Choose between WHO or CDC growth charts
+   - WHO: Global multi-ethnic population (0-19 years)
+   - CDC: US population data (2-20 years)
+
+4. **Setup Child Profile** (Sidebar):
    - Select gender (Male/Female)
    - Enter birth date
    - Click "Save Child Info"
 
-4. **Add Today's Measurement** (Sidebar - Middle Section):
+5. **Add Today's Measurement** (Sidebar):
    - Select measurement date (defaults to today)
    - Age is automatically calculated from birth date
    - Enter current height in cm
    - Enter current weight in kg
    - Click "Save Today's Measurement"
 
-5. **View Today's Analysis** (Main area - Top):
+6. **View Today's Analysis** (Main area - Top):
    - See Z-scores for both height and weight
    - View percentiles
    - Get clinical interpretation (Normal, Underweight, Overweight, etc.)
    - Expand details for expected mean and standard deviation
 
-6. **Add Historical Data** (Sidebar - Bottom Section):
+7. **Add Historical Data** (Sidebar - Bottom):
    - Select past measurement date
    - Age is automatically calculated
    - Enter height and weight

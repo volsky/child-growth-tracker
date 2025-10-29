@@ -43,3 +43,7 @@ Thumbs.db
 download_who_data.py
 who_data/page.html
 who_data/who_standards.csv
+
+# CDC data source files
+cdc_statage.csv
+cdc_wtage.csv
