@@ -13,7 +13,10 @@ A Streamlit web application for tracking child growth measurements and comparing
 - **Z-Score Analysis**: Calculate and display Z-scores and percentiles for today's measurements
 - **Clinical Interpretation**: Automatic interpretation of measurements (normal, underweight, overweight, stunted, etc.)
 - **Growth Percentiles**: Compare measurements against growth percentiles (3rd, 15th, 50th, 85th, 97th)
-- **Dual Charts**: Visualize both height-for-age and weight-for-age on separate interactive charts
+- **BMI Tracking**: Automatic BMI calculation and BMI-for-age analysis (WHO, 5-19 years)
+- **BMI Z-Score Analysis**: Comprehensive BMI analysis with percentiles and clinical interpretation
+- **BMI-for-Age Chart**: Dedicated chart showing BMI growth trends (WHO recommended indicator for thinness/overweight)
+- **Triple Charts**: Visualize height-for-age, weight-for-age, and BMI-for-age on interactive charts
 - **Smart Age-Range Display**: Charts automatically switch between 0-5 years and 5-19 years ranges based on child's age
 - **Multi-point Tracking**: Add multiple historical measurements to track growth trends over time
 - **Visual Differentiation**: Today's measurements displayed as red stars, historical data as blue circles
@@ -22,7 +25,8 @@ A Streamlit web application for tracking child growth measurements and comparing
   - WHO:
     - Height-for-age: 0-228 months (0-19 years)
     - Weight-for-age: 0-120 months (0-10 years only)
-  - CDC: 24-240 months (2-20 years)
+    - BMI-for-age: 61-228 months (5-19 years only)
+  - CDC: 24-240 months (2-20 years) - BMI not yet implemented
 - **PDF Export**: Download comprehensive growth reports with Z-scores and charts
 - **Mobile-Friendly**: Optimized for use on mobile devices
 

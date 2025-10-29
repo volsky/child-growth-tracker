@@ -72,19 +72,42 @@ def get_weight_data(gender, data_source='WHO'):
     # Return relevant columns
     return df[['age_months', 'p3', 'p15', 'p50', 'p85', 'p97']]
 
+def get_bmi_data(gender, data_source='WHO'):
+    """
+    Returns growth percentiles for BMI-for-age (in kg/m²)
+    WHO: 61-228 months (5-19 years)
+    CDC: Not implemented yet
+    """
+    if data_source == 'WHO':
+        if gender == "Male":
+            df = load_growth_data_from_csv('boys_bmi_full.csv', 'WHO')
+        else:  # Female
+            df = load_growth_data_from_csv('girls_bmi_full.csv', 'WHO')
+    else:  # CDC
+        # CDC BMI data not implemented yet
+        return pd.DataFrame()
+
+    if df.empty:
+        return df
+
+    # Return relevant columns
+    return df[['age_months', 'p3', 'p15', 'p50', 'p85', 'p97']]
+
 def get_growth_statistics(gender, data_source='WHO'):
     """
     Returns growth statistics (mean and SD) for Z-score calculation
-    This includes both height and weight statistics loaded from CSV
+    This includes height, weight, and BMI statistics loaded from CSV
     """
-    # Load height data
+    # Load height, weight, and BMI data
     if data_source == 'WHO':
         if gender == "Male":
             height_df = load_growth_data_from_csv('boys_height_full.csv', 'WHO')
             weight_df = load_growth_data_from_csv('boys_weight_full.csv', 'WHO')
+            bmi_df = load_growth_data_from_csv('boys_bmi_full.csv', 'WHO')
         else:
             height_df = load_growth_data_from_csv('girls_height_full.csv', 'WHO')
             weight_df = load_growth_data_from_csv('girls_weight_full.csv', 'WHO')
+            bmi_df = load_growth_data_from_csv('girls_bmi_full.csv', 'WHO')
     else:  # CDC
         if gender == "Male":
             height_df = load_growth_data_from_csv('boys_height_cdc.csv', 'CDC')
@@ -92,6 +115,7 @@ def get_growth_statistics(gender, data_source='WHO'):
         else:
             height_df = load_growth_data_from_csv('girls_height_cdc.csv', 'CDC')
             weight_df = load_growth_data_from_csv('girls_weight_cdc.csv', 'CDC')
+        bmi_df = pd.DataFrame()  # CDC BMI not implemented
 
     if height_df.empty or weight_df.empty:
         return pd.DataFrame()
@@ -102,22 +126,39 @@ def get_growth_statistics(gender, data_source='WHO'):
         weight_df[['age_months', 'mean', 'sd']].rename(columns={'mean': 'weight_mean', 'sd': 'weight_sd'}),
         on='age_months',
         how='outer'
-    ).sort_values('age_months')
+    )
 
+    # Merge BMI data if available
+    if not bmi_df.empty:
+        stats = pd.merge(
+            stats,
+            bmi_df[['age_months', 'mean', 'sd']].rename(columns={'mean': 'bmi_mean', 'sd': 'bmi_sd'}),
+            on='age_months',
+            how='outer'
+        )
+
+    stats = stats.sort_values('age_months')
     return stats
 
 def calculate_z_score(age_months, measurement, measurement_type, gender, data_source='WHO'):
     """
     Calculate Z-score for a given measurement
-    measurement_type: 'height' or 'weight'
+    measurement_type: 'height', 'weight', or 'bmi'
     data_source: 'WHO' or 'CDC'
     """
     stats = get_growth_statistics(gender, data_source)
 
+    # Check if the measurement type column exists
+    mean_col = f'{measurement_type}_mean'
+    sd_col = f'{measurement_type}_sd'
+
+    if mean_col not in stats.columns or sd_col not in stats.columns:
+        return None, None, None, None
+
     # Interpolate to get mean and SD for exact age
-    f_mean = interpolate.interp1d(stats['age_months'], stats[f'{measurement_type}_mean'],
+    f_mean = interpolate.interp1d(stats['age_months'], stats[mean_col],
                                    kind='linear', fill_value='extrapolate')
-    f_sd = interpolate.interp1d(stats['age_months'], stats[f'{measurement_type}_sd'],
+    f_sd = interpolate.interp1d(stats['age_months'], stats[sd_col],
                                  kind='linear', fill_value='extrapolate')
 
     mean = float(f_mean(age_months))
@@ -145,7 +186,7 @@ def interpret_z_score(z_score, measurement_type):
             return "⚠️ Tall", "warning"
         else:
             return "⚠️ Very tall", "danger"
-    else:  # weight
+    elif measurement_type == 'weight':
         if z_score < -3:
             return "⚠️ Severely underweight", "danger"
         elif z_score < -2:
@@ -156,6 +197,23 @@ def interpret_z_score(z_score, measurement_type):
             return "⚠️ Overweight", "warning"
         else:
             return "⚠️ Obese", "danger"
+    else:  # bmi
+        if z_score < -3:
+            return "⚠️ Severely wasted", "danger"
+        elif z_score < -2:
+            return "⚠️ Wasted", "warning"
+        elif z_score <= 1:
+            return "✅ Normal", "success"
+        elif z_score <= 2:
+            return "⚠️ Overweight", "warning"
+        else:
+            return "⚠️ Obese", "danger"
+
+def calculate_bmi(height_cm, weight_kg):
+    """Calculate BMI from height (cm) and weight (kg)"""
+    height_m = height_cm / 100
+    bmi = weight_kg / (height_m ** 2)
+    return bmi
 
 def calculate_age_in_months(birth_date, measurement_date):
     """Calculate age in months between two dates"""
@@ -404,12 +462,19 @@ with st.sidebar:
         today_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=75.0, step=0.1, key="today_height")
         today_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=10.0, step=0.1, key="today_weight")
 
+        # Calculate and display BMI automatically
+        if today_height > 0 and today_weight > 0:
+            today_bmi = calculate_bmi(today_height, today_weight)
+            st.info(f"💡 Calculated BMI: {today_bmi:.2f} kg/m²")
+
         if st.button("Save Today's Measurement", use_container_width=True):
+            today_bmi = calculate_bmi(today_height, today_weight) if today_height > 0 and today_weight > 0 else None
             st.session_state.today_measurement = {
                 'date': today_date,
                 'age_months': age_months,
                 'height': today_height,
                 'weight': today_weight,
+                'bmi': today_bmi,
                 'gender': st.session_state.child_info['gender']
             }
             st.success("Today's measurement saved!")
@@ -434,15 +499,22 @@ with st.sidebar:
         hist_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=70.0, step=0.1, key="hist_height")
         hist_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=9.0, step=0.1, key="hist_weight")
 
+        # Calculate and display BMI automatically for historical data
+        if hist_height > 0 and hist_weight > 0:
+            hist_bmi = calculate_bmi(hist_height, hist_weight)
+            st.info(f"💡 Calculated BMI: {hist_bmi:.2f} kg/m²")
+
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Add Point", use_container_width=True):
+                hist_bmi = calculate_bmi(hist_height, hist_weight) if hist_height > 0 and hist_weight > 0 else None
                 st.session_state.data_points.append({
                     'date': hist_date,
                     'gender': st.session_state.child_info['gender'],
                     'age': hist_age_months,
                     'height': hist_height,
-                    'weight': hist_weight
+                    'weight': hist_weight,
+                    'bmi': hist_bmi
                 })
                 st.success("Point added!")
 
@@ -456,7 +528,11 @@ with st.sidebar:
             st.subheader(f"Historical ({len(st.session_state.data_points)})")
             df_display = pd.DataFrame(st.session_state.data_points)
             df_display['date'] = pd.to_datetime(df_display['date']).dt.strftime('%Y-%m-%d')
-            st.dataframe(df_display[['date', 'age', 'height', 'weight']], use_container_width=True)
+            # Show BMI column if it exists and has values
+            columns_to_show = ['date', 'age', 'height', 'weight']
+            if 'bmi' in df_display.columns and df_display['bmi'].notna().any():
+                columns_to_show.append('bmi')
+            st.dataframe(df_display[columns_to_show], use_container_width=True)
     else:
         st.warning("Please save child info first")
 
@@ -465,7 +541,7 @@ if st.session_state.today_measurement:
     st.header("📈 Today's Measurement Analysis")
 
     today = st.session_state.today_measurement
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.subheader("📏 Height Analysis")
@@ -524,6 +600,42 @@ if st.session_state.today_measurement:
                 st.write(f"**Expected mean:** {weight_mean:.1f} kg")
                 st.write(f"**Standard deviation:** {weight_sd:.2f} kg")
                 st.write(f"**Age:** {today['age_months']} months")
+
+    with col3:
+        st.subheader("📊 BMI Analysis")
+
+        # BMI is only available for WHO data and ages 5-19 years (61-228 months)
+        if 'bmi' in today and today['bmi'] is not None:
+            if st.session_state.data_source == 'WHO' and today['age_months'] >= 61:
+                bmi_z, bmi_perc, bmi_mean, bmi_sd = calculate_z_score(
+                    today['age_months'], today['bmi'], 'bmi', today['gender'], st.session_state.data_source
+                )
+
+                if bmi_z is not None:
+                    bmi_interp, bmi_status = interpret_z_score(bmi_z, 'bmi')
+
+                    st.metric("BMI", f"{today['bmi']:.2f} kg/m²")
+                    st.metric("Z-score", f"{bmi_z:.2f}")
+                    st.metric("Percentile", f"{bmi_perc:.1f}%")
+
+                    if bmi_status == "success":
+                        st.success(bmi_interp)
+                    elif bmi_status == "warning":
+                        st.warning(bmi_interp)
+                    else:
+                        st.error(bmi_interp)
+
+                    with st.expander("ℹ️ Details"):
+                        st.write(f"**Expected mean:** {bmi_mean:.2f} kg/m²")
+                        st.write(f"**Standard deviation:** {bmi_sd:.2f} kg/m²")
+                        st.write(f"**Age:** {today['age_months']} months")
+                else:
+                    st.warning("⚠️ BMI data not available for this age")
+            else:
+                st.info("💡 BMI-for-age is only available for WHO data from 5-19 years (61-228 months)")
+                st.caption(f"Current: {st.session_state.data_source}, Age: {today['age_months']} months")
+        else:
+            st.info("💡 Save measurement to calculate BMI")
 
     st.divider()
 
@@ -699,6 +811,84 @@ if st.session_state.child_info:
             )
 
             st.plotly_chart(fig_weight, use_container_width=True)
+
+    # BMI-for-Age Chart (only for WHO data and ages 5-19)
+    if st.session_state.data_source == 'WHO' and current_age >= 61:
+        st.divider()
+        st.subheader("📊 BMI-for-Age Chart")
+
+        growth_bmi = get_bmi_data(selected_gender, st.session_state.data_source)
+
+        if not growth_bmi.empty:
+            fig_bmi = go.Figure()
+
+            colors = {'p3': 'lightcoral', 'p15': 'lightblue', 'p50': 'green',
+                     'p85': 'lightblue', 'p97': 'lightcoral'}
+            names = {'p3': '3rd percentile', 'p15': '15th percentile',
+                    'p50': '50th percentile (median)', 'p85': '85th percentile',
+                    'p97': '97th percentile'}
+
+            # Add percentile lines (in reverse order for legend display)
+            for percentile in ['p97', 'p85', 'p50', 'p15', 'p3']:
+                fig_bmi.add_trace(go.Scatter(
+                    x=growth_bmi['age_months'],
+                    y=growth_bmi[percentile],
+                    mode='lines',
+                    name=names[percentile],
+                    line=dict(color=colors[percentile], width=2 if percentile == 'p50' else 1),
+                    opacity=0.7
+                ))
+
+            # Add historical data points if they have BMI
+            if st.session_state.data_points:
+                df = pd.DataFrame(st.session_state.data_points)
+                if 'bmi' in df.columns:
+                    df_with_bmi = df[df['bmi'].notna()]
+                    if not df_with_bmi.empty:
+                        fig_bmi.add_trace(go.Scatter(
+                            x=df_with_bmi['age'],
+                            y=df_with_bmi['bmi'],
+                            mode='markers+lines',
+                            name='Historical Measurements',
+                            marker=dict(size=10, color='blue', symbol='circle'),
+                            line=dict(color='blue', width=2, dash='dash')
+                        ))
+
+            # Add today's measurement
+            if st.session_state.today_measurement and 'bmi' in st.session_state.today_measurement and st.session_state.today_measurement['bmi'] is not None:
+                today = st.session_state.today_measurement
+                fig_bmi.add_trace(go.Scatter(
+                    x=[today['age_months']],
+                    y=[today['bmi']],
+                    mode='markers',
+                    name="Today's Measurement",
+                    marker=dict(size=20, color='red', symbol='star', line=dict(color='darkred', width=2))
+                ))
+
+            # Calculate Y-axis range for BMI chart
+            visible_bmi_data = growth_bmi[growth_bmi['age_months'].between(x_range[0], x_range[1])]
+            if not visible_bmi_data.empty:
+                y_min_bmi = visible_bmi_data['p3'].min() * 0.90  # Add 10% padding below
+                y_max_bmi = visible_bmi_data['p97'].max() * 1.05  # Add 5% padding above
+            else:
+                y_min_bmi = None
+                y_max_bmi = None
+
+            fig_bmi.update_layout(
+                title=f"BMI-for-Age ({selected_gender}) - WHO - {age_group}",
+                xaxis_title="Age (months)",
+                yaxis_title="BMI (kg/m²)",
+                hovermode='closest',
+                showlegend=True,
+                height=500,
+                xaxis=dict(range=[61, 228]),  # BMI data only available from 61-228 months
+                yaxis=dict(range=[y_min_bmi, y_max_bmi] if y_min_bmi else None),
+                font=dict(size=12),
+                margin=dict(l=50, r=20, t=50, b=50)
+            )
+
+            st.plotly_chart(fig_bmi, use_container_width=True)
+            st.caption("💡 BMI-for-age is WHO's recommended indicator for assessing thinness/overweight in children 5-19 years")
 
     # PDF Export Button
     st.divider()
