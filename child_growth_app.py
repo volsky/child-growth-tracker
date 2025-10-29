@@ -279,6 +279,7 @@ with st.sidebar:
     child_gender = st.selectbox("Gender", ["Male", "Female"], key="child_gender")
     child_birth_date = st.date_input("Birth Date",
                                       value=date.today().replace(year=date.today().year - 2),
+                                      min_value=date.today().replace(year=date.today().year - 20),
                                       max_value=date.today(),
                                       key="birth_date")
 
@@ -297,6 +298,7 @@ with st.sidebar:
     if st.session_state.child_info:
         today_date = st.date_input("Measurement Date",
                                     value=date.today(),
+                                    min_value=st.session_state.child_info['birth_date'],
                                     max_value=date.today(),
                                     key="today_date")
 
@@ -326,6 +328,7 @@ with st.sidebar:
     if st.session_state.child_info:
         hist_date = st.date_input("Measurement Date",
                                    value=date.today().replace(year=date.today().year - 1),
+                                   min_value=st.session_state.child_info['birth_date'],
                                    max_value=date.today(),
                                    key="hist_date")
 
