@@ -563,34 +563,35 @@ if st.session_state.child_info:
     st.divider()
     st.subheader("📄 Export Report")
 
-    col1, col2, col3 = st.columns([1, 1, 2])
-    with col1:
-        if st.button("📥 Generate PDF Report", use_container_width=True, type="primary"):
-            with st.spinner("Generating PDF report..."):
-                try:
-                    pdf_buffer = generate_pdf_report(
-                        st.session_state.child_info,
-                        st.session_state.today_measurement,
-                        st.session_state.data_points,
-                        fig_height,
-                        fig_weight
-                    )
+    # Generate PDF data
+    try:
+        pdf_buffer = generate_pdf_report(
+            st.session_state.child_info,
+            st.session_state.today_measurement,
+            st.session_state.data_points,
+            fig_height,
+            fig_weight
+        )
 
-                    # Prepare filename
-                    filename = f"growth_report_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.pdf"
+        # Prepare filename
+        filename = f"growth_report_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.pdf"
 
-                    st.download_button(
-                        label="⬇️ Download PDF",
-                        data=pdf_buffer,
-                        file_name=filename,
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-                    st.success("✅ PDF report generated successfully!")
-                except Exception as e:
-                    st.error(f"Error generating PDF: {str(e)}")
+        col1, col2, col3 = st.columns([1, 1, 2])
+        with col1:
+            st.download_button(
+                label="📥 Download PDF Report",
+                data=pdf_buffer,
+                file_name=filename,
+                mime="application/pdf",
+                use_container_width=True,
+                type="primary"
+            )
 
-    with col2:
+        with col2:
+            st.info("📊 Z-scores, measurements & charts")
+
+    except Exception as e:
+        st.error(f"⚠️ Error generating PDF: {str(e)}")
         st.info("Report includes Z-scores, measurements, and growth charts")
 
 else:
