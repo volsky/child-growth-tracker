@@ -714,7 +714,7 @@ if st.session_state.child_info:
     else:  # WHO
         # Use 0-5 year range for young children, 5-19 year range for older children
         if current_age <= 60:  # 0-5 years
-            x_range = [0, 72]  # Show 0-6 years for context
+            x_range = [0, 60]  # Show 0-5 years
             age_group = "0-5 years"
         else:  # 5+ years
             x_range = [60, 228]  # Show 5-19 years
