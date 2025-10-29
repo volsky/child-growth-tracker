@@ -704,14 +704,21 @@ if st.session_state.child_info:
     else:
         current_age = calculate_age_in_months(st.session_state.child_info['birth_date'], date.today())
 
-    # Dynamic X-axis range based on age
-    # Use 0-5 year range for young children, 5-19 year range for older children
-    if current_age <= 60:  # 0-5 years
-        x_range = [0, 72]  # Show 0-6 years for context
-        age_group = "0-5 years"
-    else:  # 5+ years
-        x_range = [60, 228]  # Show 5-19 years
-        age_group = "5-19 years"
+    # Dynamic X-axis range based on age and data source
+    # CDC data: 24-240 months (2-20 years)
+    # WHO data: 0-228 months (0-19 years)
+    if st.session_state.data_source == 'CDC':
+        # CDC covers 2-20 years (24-240 months)
+        x_range = [24, 240]
+        age_group = "2-20 years"
+    else:  # WHO
+        # Use 0-5 year range for young children, 5-19 year range for older children
+        if current_age <= 60:  # 0-5 years
+            x_range = [0, 72]  # Show 0-6 years for context
+            age_group = "0-5 years"
+        else:  # 5+ years
+            x_range = [60, 228]  # Show 5-19 years
+            age_group = "5-19 years"
 
     st.header(f"📊 Growth Charts - {selected_gender} ({st.session_state.data_source}) - {age_group}")
 
