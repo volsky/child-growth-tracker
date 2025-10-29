@@ -26,7 +26,10 @@ A Streamlit web application for tracking child growth measurements and comparing
     - Height-for-age: 0-228 months (0-19 years)
     - Weight-for-age: 0-120 months (0-10 years only)
     - BMI-for-age: 61-228 months (5-19 years only)
-  - CDC: 24-240 months (2-20 years) - BMI not yet implemented
+  - CDC: 24-240 months (2-20 years)
+    - Height-for-age: 24-240 months
+    - Weight-for-age: 24-240 months
+    - BMI-for-age: 24-240 months
 - **PDF Export**: Download comprehensive growth reports with Z-scores and charts
 - **Mobile-Friendly**: Optimized for use on mobile devices
 

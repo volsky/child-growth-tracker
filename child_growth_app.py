@@ -76,7 +76,7 @@ def get_bmi_data(gender, data_source='WHO'):
     """
     Returns growth percentiles for BMI-for-age (in kg/m²)
     WHO: 61-228 months (5-19 years)
-    CDC: Not implemented yet
+    CDC: 24-240 months (2-20 years)
     """
     if data_source == 'WHO':
         if gender == "Male":
@@ -84,8 +84,10 @@ def get_bmi_data(gender, data_source='WHO'):
         else:  # Female
             df = load_growth_data_from_csv('girls_bmi_full.csv', 'WHO')
     else:  # CDC
-        # CDC BMI data not implemented yet
-        return pd.DataFrame()
+        if gender == "Male":
+            df = load_growth_data_from_csv('boys_bmi_cdc.csv', 'CDC')
+        else:  # Female
+            df = load_growth_data_from_csv('girls_bmi_cdc.csv', 'CDC')
 
     if df.empty:
         return df
@@ -112,10 +114,11 @@ def get_growth_statistics(gender, data_source='WHO'):
         if gender == "Male":
             height_df = load_growth_data_from_csv('boys_height_cdc.csv', 'CDC')
             weight_df = load_growth_data_from_csv('boys_weight_cdc.csv', 'CDC')
+            bmi_df = load_growth_data_from_csv('boys_bmi_cdc.csv', 'CDC')
         else:
             height_df = load_growth_data_from_csv('girls_height_cdc.csv', 'CDC')
             weight_df = load_growth_data_from_csv('girls_weight_cdc.csv', 'CDC')
-        bmi_df = pd.DataFrame()  # CDC BMI not implemented
+            bmi_df = load_growth_data_from_csv('girls_bmi_cdc.csv', 'CDC')
 
     if height_df.empty or weight_df.empty:
         return pd.DataFrame()
@@ -604,9 +607,17 @@ if st.session_state.today_measurement:
     with col3:
         st.subheader("📊 BMI Analysis")
 
-        # BMI is only available for WHO data and ages 5-19 years (61-228 months)
+        # BMI availability depends on data source and age
+        # WHO: 61-228 months (5-19 years)
+        # CDC: 24-240 months (2-20 years)
         if 'bmi' in today and today['bmi'] is not None:
+            bmi_available = False
             if st.session_state.data_source == 'WHO' and today['age_months'] >= 61:
+                bmi_available = True
+            elif st.session_state.data_source == 'CDC' and today['age_months'] >= 24:
+                bmi_available = True
+
+            if bmi_available:
                 bmi_z, bmi_perc, bmi_mean, bmi_sd = calculate_z_score(
                     today['age_months'], today['bmi'], 'bmi', today['gender'], st.session_state.data_source
                 )
@@ -632,7 +643,10 @@ if st.session_state.today_measurement:
                 else:
                     st.warning("⚠️ BMI data not available for this age")
             else:
-                st.info("💡 BMI-for-age is only available for WHO data from 5-19 years (61-228 months)")
+                if st.session_state.data_source == 'WHO':
+                    st.info("💡 WHO BMI-for-age is available from 5-19 years (61-228 months)")
+                else:  # CDC
+                    st.info("💡 CDC BMI-for-age is available from 2-20 years (24-240 months)")
                 st.caption(f"Current: {st.session_state.data_source}, Age: {today['age_months']} months")
         else:
             st.info("💡 Save measurement to calculate BMI")
@@ -812,8 +826,16 @@ if st.session_state.child_info:
 
             st.plotly_chart(fig_weight, use_container_width=True)
 
-    # BMI-for-Age Chart (only for WHO data and ages 5-19)
+    # BMI-for-Age Chart
+    # WHO: ages 5-19 (61-228 months)
+    # CDC: ages 2-20 (24-240 months)
+    show_bmi_chart = False
     if st.session_state.data_source == 'WHO' and current_age >= 61:
+        show_bmi_chart = True
+    elif st.session_state.data_source == 'CDC' and current_age >= 24:
+        show_bmi_chart = True
+
+    if show_bmi_chart:
         st.divider()
         st.subheader("📊 BMI-for-Age Chart")
 
@@ -874,21 +896,30 @@ if st.session_state.child_info:
                 y_min_bmi = None
                 y_max_bmi = None
 
+            # Set X-axis range based on data source
+            if st.session_state.data_source == 'WHO':
+                bmi_x_range = [61, 228]  # WHO: 5-19 years
+            else:  # CDC
+                bmi_x_range = [24, 240]  # CDC: 2-20 years
+
             fig_bmi.update_layout(
-                title=f"BMI-for-Age ({selected_gender}) - WHO - {age_group}",
+                title=f"BMI-for-Age ({selected_gender}) - {st.session_state.data_source} - {age_group}",
                 xaxis_title="Age (months)",
                 yaxis_title="BMI (kg/m²)",
                 hovermode='closest',
                 showlegend=True,
                 height=500,
-                xaxis=dict(range=[61, 228]),  # BMI data only available from 61-228 months
+                xaxis=dict(range=bmi_x_range),
                 yaxis=dict(range=[y_min_bmi, y_max_bmi] if y_min_bmi else None),
                 font=dict(size=12),
                 margin=dict(l=50, r=20, t=50, b=50)
             )
 
             st.plotly_chart(fig_bmi, use_container_width=True)
-            st.caption("💡 BMI-for-age is WHO's recommended indicator for assessing thinness/overweight in children 5-19 years")
+            if st.session_state.data_source == 'WHO':
+                st.caption("💡 BMI-for-age is WHO's recommended indicator for assessing thinness/overweight in children 5-19 years")
+            else:
+                st.caption("💡 CDC BMI-for-age charts for ages 2-20 years")
 
     # PDF Export Button
     st.divider()
