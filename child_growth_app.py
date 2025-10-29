@@ -230,7 +230,7 @@ def calculate_age_in_months(birth_date, measurement_date):
 
     return total_months
 
-def generate_pdf_report(child_info, today_measurement, data_points, height_fig, weight_fig, data_source='WHO'):
+def generate_pdf_report(child_info, today_measurement, data_points, height_fig, weight_fig, bmi_fig=None, data_source='WHO'):
     """Generate PDF report with Z-scores and charts"""
     buffer = BytesIO()
 
@@ -261,6 +261,31 @@ Birth Date: {child_info['birth_date'].strftime('%Y-%m-%d')}
             height_interp, _ = interpret_z_score(height_z, 'height')
             weight_interp, _ = interpret_z_score(weight_z, 'weight')
 
+            # Check if BMI data is available and calculate BMI Z-score
+            bmi_text = ""
+            if 'bmi' in today_measurement and today_measurement['bmi'] is not None:
+                bmi_available = False
+                if data_source == 'WHO' and today_measurement['age_months'] >= 61:
+                    bmi_available = True
+                elif data_source == 'CDC' and today_measurement['age_months'] >= 24:
+                    bmi_available = True
+
+                if bmi_available:
+                    bmi_z, bmi_perc, bmi_mean, bmi_sd = calculate_z_score(
+                        today_measurement['age_months'], today_measurement['bmi'], 'bmi', today_measurement['gender'], data_source
+                    )
+                    if bmi_z is not None:
+                        bmi_interp, _ = interpret_z_score(bmi_z, 'bmi')
+                        bmi_text = f"""
+BMI Analysis:
+  Measurement: {today_measurement['bmi']:.2f} kg/m²
+  Z-score: {bmi_z:.2f}
+  Percentile: {bmi_perc:.1f}%
+  Interpretation: {bmi_interp}
+  Expected mean: {bmi_mean:.2f} kg/m²
+  Standard deviation: {bmi_sd:.2f} kg/m²
+"""
+
             # Add today's measurements
             today_text = f"""
 Today's Measurement ({today_measurement['date'].strftime('%Y-%m-%d')}):
@@ -282,7 +307,7 @@ Weight Analysis:
   Interpretation: {weight_interp}
   Expected mean: {weight_mean:.1f} kg
   Standard deviation: {weight_sd:.2f} kg
-"""
+{bmi_text}"""
             plt.text(0.1, 0.72, today_text, fontsize=10, verticalalignment='top',
                     fontfamily='monospace', transform=fig.transFigure)
 
@@ -294,6 +319,9 @@ Weight Analysis:
             hist_text += f"Age range: {df['age'].min()}-{df['age'].max()} months\n"
             hist_text += f"Height range: {df['height'].min():.1f}-{df['height'].max():.1f} cm\n"
             hist_text += f"Weight range: {df['weight'].min():.1f}-{df['weight'].max():.1f} kg\n"
+            # Add BMI range if available
+            if 'bmi' in df.columns and df['bmi'].notna().any():
+                hist_text += f"BMI range: {df['bmi'].min():.2f}-{df['bmi'].max():.2f} kg/m²\n"
 
             plt.text(0.1, 0.25, hist_text, fontsize=10, verticalalignment='top',
                     fontfamily='monospace', transform=fig.transFigure)
@@ -327,6 +355,17 @@ Weight Analysis:
             plt.imshow(img)
             plt.axis('off')
             plt.title('Weight-for-Age Chart', fontsize=14, fontweight='bold', pad=20)
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close()
+
+        # Page 4: BMI Chart (if available)
+        if bmi_fig:
+            img_bytes = bmi_fig.to_image(format="png", width=1000, height=700)
+            fig = plt.figure(figsize=(8.5, 11))
+            img = plt.imread(BytesIO(img_bytes))
+            plt.imshow(img)
+            plt.axis('off')
+            plt.title('BMI-for-Age Chart', fontsize=14, fontweight='bold', pad=20)
             pdf.savefig(fig, bbox_inches='tight')
             plt.close()
 
@@ -829,6 +868,7 @@ if st.session_state.child_info:
     # BMI-for-Age Chart
     # WHO: ages 5-19 (61-228 months)
     # CDC: ages 2-20 (24-240 months)
+    fig_bmi = None  # Initialize to None, will be set if BMI chart is shown
     show_bmi_chart = False
     if st.session_state.data_source == 'WHO' and current_age >= 61:
         show_bmi_chart = True
@@ -933,6 +973,7 @@ if st.session_state.child_info:
             st.session_state.data_points,
             fig_height,
             fig_weight,
+            fig_bmi,
             st.session_state.data_source
         )
 
