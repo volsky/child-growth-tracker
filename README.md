@@ -5,6 +5,8 @@ A Streamlit web application for tracking child growth measurements and comparing
 ## Features
 
 - **Multiple Data Sources**: Choose between WHO (global/multi-ethnic) or CDC (US population) growth charts
+- **Smart Data Source Recommendations**: Automatically recommends the best data source based on child's age
+- **Automatic Data Source Switching**: When selected data source doesn't have data for child's age, automatically switches to alternative source
 - **Child Profile**: Store child's gender and birth date for automatic age calculation
 - **Birth Date Tracking**: Automatically calculates age in months based on birth date and measurement date
 - **Today's Measurement**: Dedicated section for current measurements with date picker
@@ -12,11 +14,14 @@ A Streamlit web application for tracking child growth measurements and comparing
 - **Clinical Interpretation**: Automatic interpretation of measurements (normal, underweight, overweight, stunted, etc.)
 - **Growth Percentiles**: Compare measurements against growth percentiles (3rd, 15th, 50th, 85th, 97th)
 - **Dual Charts**: Visualize both height-for-age and weight-for-age on separate interactive charts
+- **Smart Age-Range Display**: Charts automatically switch between 0-5 years and 5-19 years ranges based on child's age
 - **Multi-point Tracking**: Add multiple historical measurements to track growth trends over time
 - **Visual Differentiation**: Today's measurements displayed as red stars, historical data as blue circles
 - **Gender-specific**: Separate charts and percentiles for male and female children
 - **Age Range**:
-  - WHO: 0-228 months (0-19 years)
+  - WHO:
+    - Height-for-age: 0-228 months (0-19 years)
+    - Weight-for-age: 0-120 months (0-10 years only)
   - CDC: 24-240 months (2-20 years)
 - **PDF Export**: Download comprehensive growth reports with Z-scores and charts
 - **Mobile-Friendly**: Optimized for use on mobile devices
@@ -37,15 +42,16 @@ streamlit run child_growth_app.py
 
 2. The app will open in your default web browser
 
-3. **Select Data Source** (Sidebar - Top Section):
-   - Choose between WHO or CDC growth charts
-   - WHO: Global multi-ethnic population (0-19 years)
-   - CDC: US population data (2-20 years)
-
-4. **Setup Child Profile** (Sidebar):
+3. **Setup Child Profile** (Sidebar - First):
    - Select gender (Male/Female)
    - Enter birth date
    - Click "Save Child Info"
+
+4. **Select Data Source** (Sidebar - After child info):
+   - App automatically recommends best data source for your child's age
+   - Choose between WHO or CDC growth charts
+   - WHO: Global multi-ethnic population (0-19 years)
+   - CDC: US population data (2-20 years)
 
 5. **Add Today's Measurement** (Sidebar):
    - Select measurement date (defaults to today)

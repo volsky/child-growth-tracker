@@ -285,7 +285,7 @@ st.title("👶 Child Growth Tracker")
 
 st.markdown("""
 Track child growth with WHO or CDC growth standards and reference data.
-Charts automatically scale based on your child's age for better visualization.
+Charts automatically switch between age ranges (0-5 years or 5-19 years) based on your child's age for better visualization.
 **Mobile-friendly interface for easy tracking on the go!**
 """)
 
@@ -301,22 +301,6 @@ if 'data_source' not in st.session_state:
 
 # Sidebar for Child Information
 with st.sidebar:
-    st.header("⚙️ Data Source")
-
-    data_source = st.selectbox(
-        "Growth Charts",
-        ["WHO", "CDC"],
-        key="data_source_select",
-        help="WHO: Global multi-ethnic population (0-19 years)\nCDC: US population (2-20 years)"
-    )
-    st.session_state.data_source = data_source
-
-    if data_source == "WHO":
-        st.info("📊 WHO Child Growth Standards (2006) and Growth Reference (2007)")
-    else:
-        st.info("📊 CDC Growth Charts (2000) for US population")
-
-    st.divider()
     st.header("👤 Child Information")
 
     child_gender = st.selectbox("Gender", ["Male", "Female"], key="child_gender")
@@ -332,6 +316,75 @@ with st.sidebar:
             'birth_date': child_birth_date
         }
         st.success("Child info saved!")
+
+    st.divider()
+
+    # Data Source Selection - moved below child info
+    st.header("⚙️ Data Source")
+
+    # Calculate recommended data source based on child's age
+    recommended_source = "WHO"  # Default
+    recommendation_reason = ""
+    force_cdc = False  # Flag to force CDC and disable selection
+
+    if st.session_state.child_info:
+        child_age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], date.today())
+
+        # Force CDC if WHO data is not available (weight over 10 years)
+        if child_age_months > 120:  # Over 10 years - WHO weight data not available
+            force_cdc = True
+            recommended_source = "CDC"
+            recommendation_reason = "🔒 Automatically using CDC (WHO weight data only available up to 10 years)"
+        # Recommendation logic based on age
+        elif child_age_months < 24:  # Under 2 years
+            recommended_source = "WHO"
+            recommendation_reason = "Recommended: WHO is best for children under 2 years"
+        elif child_age_months >= 24 and child_age_months <= 120:  # 2-10 years
+            recommended_source = "WHO"
+            recommendation_reason = "Recommended: WHO provides comprehensive data for this age range"
+        else:  # Over 19 years
+            recommended_source = "CDC"
+            recommendation_reason = "Recommended: CDC covers up to 20 years"
+
+        # Show recommendation
+        if force_cdc:
+            st.warning(recommendation_reason)
+        else:
+            st.info(f"💡 {recommendation_reason}")
+
+    # Get current selection or use recommended
+    if force_cdc:
+        # Force CDC and disable selection
+        default_index = 1  # CDC
+        st.session_state.data_source = "CDC"
+        data_source = st.selectbox(
+            "Growth Charts",
+            ["WHO", "CDC"],
+            index=default_index,
+            disabled=True,
+            key="data_source_select",
+            help="Data source locked to CDC because WHO doesn't provide weight data beyond 10 years"
+        )
+    else:
+        # Normal selection
+        if 'data_source' not in st.session_state or st.session_state.child_info:
+            default_index = 0 if recommended_source == "WHO" else 1
+        else:
+            default_index = 0 if st.session_state.data_source == "WHO" else 1
+
+        data_source = st.selectbox(
+            "Growth Charts",
+            ["WHO", "CDC"],
+            index=default_index,
+            key="data_source_select",
+            help="WHO: Global multi-ethnic population (0-19 years)\nCDC: US population (2-20 years)"
+        )
+        st.session_state.data_source = data_source
+
+    if data_source == "WHO":
+        st.caption("📊 WHO Child Growth Standards (2006) and Growth Reference (2007)")
+    else:
+        st.caption("📊 CDC Growth Charts (2000) for US population")
 
     st.divider()
 
@@ -439,33 +492,43 @@ if st.session_state.today_measurement:
 
     with col2:
         st.subheader("⚖️ Weight Analysis")
-        weight_z, weight_perc, weight_mean, weight_sd = calculate_z_score(
-            today['age_months'], today['weight'], 'weight', today['gender'], st.session_state.data_source
-        )
-        weight_interp, weight_status = interpret_z_score(weight_z, 'weight')
 
-        st.metric("Weight", f"{today['weight']:.1f} kg")
-        st.metric("Z-score", f"{weight_z:.2f}")
-        st.metric("Percentile", f"{weight_perc:.1f}%")
+        # Check if weight data is available for this age and data source
+        # Automatically switch to CDC if WHO doesn't have data for this age
+        weight_data_source = st.session_state.data_source
+        if st.session_state.data_source == 'WHO' and today['age_months'] > 120:
+            weight_data_source = 'CDC'
+            st.info(f"ℹ️ Automatically using CDC data (WHO weight data only available up to 10 years)")
 
-        if weight_status == "success":
-            st.success(weight_interp)
-        elif weight_status == "warning":
-            st.warning(weight_interp)
+        if weight_data_source == 'CDC' and today['age_months'] < 24:
+            st.warning("⚠️ CDC weight-for-age data is only available from 2 years (24 months)")
+            st.info("Please use WHO data source for children under 2 years")
         else:
-            st.error(weight_interp)
+            weight_z, weight_perc, weight_mean, weight_sd = calculate_z_score(
+                today['age_months'], today['weight'], 'weight', today['gender'], weight_data_source
+            )
+            weight_interp, weight_status = interpret_z_score(weight_z, 'weight')
 
-        with st.expander("ℹ️ Details"):
-            st.write(f"**Expected mean:** {weight_mean:.1f} kg")
-            st.write(f"**Standard deviation:** {weight_sd:.2f} kg")
-            st.write(f"**Age:** {today['age_months']} months")
+            st.metric("Weight", f"{today['weight']:.1f} kg")
+            st.metric("Z-score", f"{weight_z:.2f}")
+            st.metric("Percentile", f"{weight_perc:.1f}%")
+
+            if weight_status == "success":
+                st.success(weight_interp)
+            elif weight_status == "warning":
+                st.warning(weight_interp)
+            else:
+                st.error(weight_interp)
+
+            with st.expander("ℹ️ Details"):
+                st.write(f"**Expected mean:** {weight_mean:.1f} kg")
+                st.write(f"**Standard deviation:** {weight_sd:.2f} kg")
+                st.write(f"**Age:** {today['age_months']} months")
 
     st.divider()
 
 # Main content - Visualizations
 if st.session_state.child_info:
-    st.header(f"📊 Growth Charts - {st.session_state.child_info['gender']} ({st.session_state.data_source})")
-
     selected_gender = st.session_state.child_info['gender']
     growth_height = get_height_data(selected_gender, st.session_state.data_source)
     growth_weight = get_weight_data(selected_gender, st.session_state.data_source)
@@ -477,14 +540,15 @@ if st.session_state.child_info:
         current_age = calculate_age_in_months(st.session_state.child_info['birth_date'], date.today())
 
     # Dynamic X-axis range based on age
-    if current_age <= 12:  # 0-1 year
-        x_range = [0, 24]  # Show 0-2 years
-    elif current_age <= 60:  # 1-5 years
-        x_range = [0, 72]  # Show 0-6 years
-    elif current_age <= 120:  # 5-10 years
-        x_range = [0, 144]  # Show 0-12 years
-    else:  # 10+ years
-        x_range = [0, 228]  # Show full range 0-19 years
+    # Use 0-5 year range for young children, 5-19 year range for older children
+    if current_age <= 60:  # 0-5 years
+        x_range = [0, 72]  # Show 0-6 years for context
+        age_group = "0-5 years"
+    else:  # 5+ years
+        x_range = [60, 228]  # Show 5-19 years
+        age_group = "5-19 years"
+
+    st.header(f"📊 Growth Charts - {selected_gender} ({st.session_state.data_source}) - {age_group}")
 
     # For mobile: Use single column layout on narrow screens
     # Streamlit automatically adjusts columns but we can control height
@@ -494,14 +558,14 @@ if st.session_state.child_info:
     with col1:
         fig_height = go.Figure()
 
-        # Add WHO percentile lines
+        # Add WHO percentile lines (in reverse order for legend display)
         colors = {'p3': 'lightcoral', 'p15': 'lightblue', 'p50': 'green',
                  'p85': 'lightblue', 'p97': 'lightcoral'}
         names = {'p3': '3rd percentile', 'p15': '15th percentile',
                 'p50': '50th percentile (median)', 'p85': '85th percentile',
                 'p97': '97th percentile'}
 
-        for percentile in ['p3', 'p15', 'p50', 'p85', 'p97']:
+        for percentile in ['p97', 'p85', 'p50', 'p15', 'p3']:
             fig_height.add_trace(go.Scatter(
                 x=growth_height['age_months'],
                 y=growth_height[percentile],
@@ -545,7 +609,7 @@ if st.session_state.child_info:
             y_max = None
 
         fig_height.update_layout(
-            title=f"Height-for-Age ({selected_gender})",
+            title=f"Height-for-Age ({selected_gender}) - {age_group}",
             xaxis_title="Age (months)",
             yaxis_title="Height (cm)",
             hovermode='closest',
@@ -562,66 +626,79 @@ if st.session_state.child_info:
 
     # Weight-for-Age Chart
     with col2:
-        fig_weight = go.Figure()
+        # Automatically switch to CDC if WHO doesn't have weight data for this age
+        chart_weight_source = st.session_state.data_source
+        if st.session_state.data_source == 'WHO' and current_age > 120:
+            chart_weight_source = 'CDC'
+            st.info("ℹ️ Automatically displaying CDC weight chart (WHO weight data only available up to 10 years)")
 
-        # Add percentile lines
-        for percentile in ['p3', 'p15', 'p50', 'p85', 'p97']:
-            fig_weight.add_trace(go.Scatter(
-                x=growth_weight['age_months'],
-                y=growth_weight[percentile],
-                mode='lines',
-                name=names[percentile],
-                line=dict(color=colors[percentile], width=2 if percentile == 'p50' else 1),
-                opacity=0.7
-            ))
-
-        # Add historical data points
-        if st.session_state.data_points:
-            df = pd.DataFrame(st.session_state.data_points)
-            fig_weight.add_trace(go.Scatter(
-                x=df['age'],
-                y=df['weight'],
-                mode='markers+lines',
-                name='Historical Measurements',
-                marker=dict(size=10, color='blue', symbol='circle'),
-                line=dict(color='blue', width=2, dash='dash')
-            ))
-
-        # Add today's measurement
-        if st.session_state.today_measurement:
-            today = st.session_state.today_measurement
-            fig_weight.add_trace(go.Scatter(
-                x=[today['age_months']],
-                y=[today['weight']],
-                mode='markers',
-                name="Today's Measurement",
-                marker=dict(size=20, color='red', symbol='star', line=dict(color='darkred', width=2))
-            ))
-
-        # Calculate Y-axis range for weight chart
-        visible_weight_data = growth_weight[growth_weight['age_months'].between(x_range[0], x_range[1])]
-        if not visible_weight_data.empty:
-            y_min_weight = visible_weight_data['p3'].min() * 0.90  # Add 10% padding below
-            y_max_weight = visible_weight_data['p97'].max() * 1.05  # Add 5% padding above
+        # Check if CDC data is available for this age
+        if chart_weight_source == 'CDC' and current_age < 24:
+            st.warning("⚠️ CDC Weight-for-Age Chart Not Available")
+            st.info("CDC data is only available from 2 years (24 months). Please use WHO data source for children under 2 years.")
         else:
-            y_min_weight = None
-            y_max_weight = None
+            # Load appropriate weight data
+            growth_weight_chart = get_weight_data(selected_gender, chart_weight_source)
+            fig_weight = go.Figure()
 
-        fig_weight.update_layout(
-            title=f"Weight-for-Age ({selected_gender})",
-            xaxis_title="Age (months)",
-            yaxis_title="Weight (kg)",
-            hovermode='closest',
-            showlegend=True,
-            height=500,
-            xaxis=dict(range=x_range),
-            yaxis=dict(range=[y_min_weight, y_max_weight] if y_min_weight else None),
-            # Mobile optimization
-            font=dict(size=12),
-            margin=dict(l=50, r=20, t=50, b=50)
-        )
+            # Add percentile lines (in reverse order for legend display)
+            for percentile in ['p97', 'p85', 'p50', 'p15', 'p3']:
+                fig_weight.add_trace(go.Scatter(
+                    x=growth_weight_chart['age_months'],
+                    y=growth_weight_chart[percentile],
+                    mode='lines',
+                    name=names[percentile],
+                    line=dict(color=colors[percentile], width=2 if percentile == 'p50' else 1),
+                    opacity=0.7
+                ))
 
-        st.plotly_chart(fig_weight, use_container_width=True)
+            # Add historical data points
+            if st.session_state.data_points:
+                df = pd.DataFrame(st.session_state.data_points)
+                fig_weight.add_trace(go.Scatter(
+                    x=df['age'],
+                    y=df['weight'],
+                    mode='markers+lines',
+                    name='Historical Measurements',
+                    marker=dict(size=10, color='blue', symbol='circle'),
+                    line=dict(color='blue', width=2, dash='dash')
+                ))
+
+            # Add today's measurement
+            if st.session_state.today_measurement:
+                today = st.session_state.today_measurement
+                fig_weight.add_trace(go.Scatter(
+                    x=[today['age_months']],
+                    y=[today['weight']],
+                    mode='markers',
+                    name="Today's Measurement",
+                    marker=dict(size=20, color='red', symbol='star', line=dict(color='darkred', width=2))
+                ))
+
+            # Calculate Y-axis range for weight chart
+            visible_weight_data = growth_weight_chart[growth_weight_chart['age_months'].between(x_range[0], x_range[1])]
+            if not visible_weight_data.empty:
+                y_min_weight = visible_weight_data['p3'].min() * 0.90  # Add 10% padding below
+                y_max_weight = visible_weight_data['p97'].max() * 1.05  # Add 5% padding above
+            else:
+                y_min_weight = None
+                y_max_weight = None
+
+            fig_weight.update_layout(
+                title=f"Weight-for-Age ({selected_gender}) - {chart_weight_source} - {age_group if current_age <= 120 else '0-10 years'}",
+                xaxis_title="Age (months)",
+                yaxis_title="Weight (kg)",
+                hovermode='closest',
+                showlegend=True,
+                height=500,
+                xaxis=dict(range=x_range),
+                yaxis=dict(range=[y_min_weight, y_max_weight] if y_min_weight else None),
+                # Mobile optimization
+                font=dict(size=12),
+                margin=dict(l=50, r=20, t=50, b=50)
+            )
+
+            st.plotly_chart(fig_weight, use_container_width=True)
 
     # PDF Export Button
     st.divider()
@@ -709,7 +786,11 @@ st.markdown("---")
 st.markdown("""
 **Data Sources:**
 - **WHO:** WHO Child Growth Standards (2006, 0-5 years) and WHO Growth Reference (2007, 5-19 years) based on global multi-ethnic populations
+  - Height-for-age: 0-228 months (0-19 years)
+  - Weight-for-age: 0-120 months (0-10 years only)
+  - *Note: For children over 10 years, WHO recommends using BMI-for-age instead of weight-for-age*
 - **CDC:** CDC Growth Charts (2000, 2-20 years) based on US population data
+  - Both height and weight data available for full age range
 
 Both datasets use LMS (Lambda-Mu-Sigma) parameters for percentile calculations.
 
