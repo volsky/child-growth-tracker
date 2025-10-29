@@ -6,6 +6,9 @@ from datetime import datetime, date
 from scipy import interpolate
 from scipy.stats import norm
 import os
+from io import BytesIO
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 
 # Load WHO Growth Standards from CSV files (based on official WHO LMS parameters)
 # Data source: WHO Child Growth Standards (2006) and Growth Reference (2007)
@@ -141,6 +144,108 @@ def calculate_age_in_months(birth_date, measurement_date):
         total_months -= 1
 
     return total_months
+
+def generate_pdf_report(child_info, today_measurement, data_points, height_fig, weight_fig):
+    """Generate PDF report with Z-scores and charts"""
+    buffer = BytesIO()
+
+    with PdfPages(buffer) as pdf:
+        # Page 1: Summary and Z-scores
+        fig = plt.figure(figsize=(8.5, 11))
+        fig.suptitle('Child Growth Report', fontsize=16, fontweight='bold')
+
+        # Add child information
+        info_text = f"""
+Child Information:
+─────────────────────────────────
+Gender: {child_info['gender']}
+Birth Date: {child_info['birth_date'].strftime('%Y-%m-%d')}
+"""
+        plt.text(0.1, 0.9, info_text, fontsize=12, verticalalignment='top',
+                fontfamily='monospace', transform=fig.transFigure)
+
+        if today_measurement:
+            # Calculate Z-scores
+            height_z, height_perc, height_mean, height_sd = calculate_z_score(
+                today_measurement['age_months'], today_measurement['height'], 'height', today_measurement['gender']
+            )
+            weight_z, weight_perc, weight_mean, weight_sd = calculate_z_score(
+                today_measurement['age_months'], today_measurement['weight'], 'weight', today_measurement['gender']
+            )
+
+            height_interp, _ = interpret_z_score(height_z, 'height')
+            weight_interp, _ = interpret_z_score(weight_z, 'weight')
+
+            # Add today's measurements
+            today_text = f"""
+Today's Measurement ({today_measurement['date'].strftime('%Y-%m-%d')}):
+─────────────────────────────────
+Age: {today_measurement['age_months']} months ({today_measurement['age_months'] // 12} years, {today_measurement['age_months'] % 12} months)
+
+Height Analysis:
+  Measurement: {today_measurement['height']:.1f} cm
+  Z-score: {height_z:.2f}
+  Percentile: {height_perc:.1f}%
+  Interpretation: {height_interp}
+  Expected mean: {height_mean:.1f} cm
+  Standard deviation: {height_sd:.2f} cm
+
+Weight Analysis:
+  Measurement: {today_measurement['weight']:.1f} kg
+  Z-score: {weight_z:.2f}
+  Percentile: {weight_perc:.1f}%
+  Interpretation: {weight_interp}
+  Expected mean: {weight_mean:.1f} kg
+  Standard deviation: {weight_sd:.2f} kg
+"""
+            plt.text(0.1, 0.72, today_text, fontsize=10, verticalalignment='top',
+                    fontfamily='monospace', transform=fig.transFigure)
+
+        # Add historical data summary
+        if data_points:
+            hist_text = f"\nHistorical Measurements:\n{'─'*37}\n"
+            hist_text += f"Total measurements: {len(data_points)}\n"
+            df = pd.DataFrame(data_points)
+            hist_text += f"Age range: {df['age'].min()}-{df['age'].max()} months\n"
+            hist_text += f"Height range: {df['height'].min():.1f}-{df['height'].max():.1f} cm\n"
+            hist_text += f"Weight range: {df['weight'].min():.1f}-{df['weight'].max():.1f} kg\n"
+
+            plt.text(0.1, 0.25, hist_text, fontsize=10, verticalalignment='top',
+                    fontfamily='monospace', transform=fig.transFigure)
+
+        # Add footer
+        footer = f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nData source: WHO Child Growth Standards (2006) and Growth Reference (2007)"
+        plt.text(0.1, 0.05, footer, fontsize=8, verticalalignment='bottom',
+                style='italic', transform=fig.transFigure)
+
+        plt.axis('off')
+        pdf.savefig(fig, bbox_inches='tight')
+        plt.close()
+
+        # Page 2 & 3: Charts
+        # Export plotly charts to images
+        if height_fig:
+            img_bytes = height_fig.to_image(format="png", width=1000, height=700)
+            fig = plt.figure(figsize=(8.5, 11))
+            img = plt.imread(BytesIO(img_bytes))
+            plt.imshow(img)
+            plt.axis('off')
+            plt.title('Height-for-Age Chart', fontsize=14, fontweight='bold', pad=20)
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close()
+
+        if weight_fig:
+            img_bytes = weight_fig.to_image(format="png", width=1000, height=700)
+            fig = plt.figure(figsize=(8.5, 11))
+            img = plt.imread(BytesIO(img_bytes))
+            plt.imshow(img)
+            plt.axis('off')
+            plt.title('Weight-for-Age Chart', fontsize=14, fontweight='bold', pad=20)
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close()
+
+    buffer.seek(0)
+    return buffer
 
 # Streamlit App
 st.set_page_config(
@@ -450,6 +555,41 @@ if st.session_state.child_info:
         )
 
         st.plotly_chart(fig_weight, use_container_width=True)
+
+    # PDF Export Button
+    st.divider()
+    st.subheader("📄 Export Report")
+
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        if st.button("📥 Generate PDF Report", use_container_width=True, type="primary"):
+            with st.spinner("Generating PDF report..."):
+                try:
+                    pdf_buffer = generate_pdf_report(
+                        st.session_state.child_info,
+                        st.session_state.today_measurement,
+                        st.session_state.data_points,
+                        fig_height,
+                        fig_weight
+                    )
+
+                    # Prepare filename
+                    filename = f"growth_report_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.pdf"
+
+                    st.download_button(
+                        label="⬇️ Download PDF",
+                        data=pdf_buffer,
+                        file_name=filename,
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                    st.success("✅ PDF report generated successfully!")
+                except Exception as e:
+                    st.error(f"Error generating PDF: {str(e)}")
+
+    with col2:
+        st.info("Report includes Z-scores, measurements, and growth charts")
+
 else:
     st.info("👈 Please save child information in the sidebar to get started!")
 
