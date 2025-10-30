@@ -622,23 +622,28 @@ if st.session_state.today_measurement:
         height_z, height_perc, height_mean, height_sd = calculate_z_score(
             today['age_months'], today['height'], 'height', today['gender'], st.session_state.data_source
         )
-        height_interp, height_status = interpret_z_score(height_z, 'height')
 
         st.metric("Height", f"{today['height']:.1f} cm")
-        st.metric("Z-score", f"{height_z:.2f}")
-        st.metric("Percentile", f"{height_perc:.1f}%")
 
-        if height_status == "success":
-            st.success(height_interp)
-        elif height_status == "warning":
-            st.warning(height_interp)
+        if height_z is not None:
+            height_interp, height_status = interpret_z_score(height_z, 'height')
+            st.metric("Z-score", f"{height_z:.2f}")
+            st.metric("Percentile", f"{height_perc:.1f}%")
+
+            if height_status == "success":
+                st.success(height_interp)
+            elif height_status == "warning":
+                st.warning(height_interp)
+            else:
+                st.error(height_interp)
+
+            with st.expander("ℹ️ Details"):
+                st.write(f"**Expected mean:** {height_mean:.1f} cm")
+                st.write(f"**Standard deviation:** {height_sd:.2f} cm")
+                st.write(f"**Age:** {today['age_months']} months")
         else:
-            st.error(height_interp)
-
-        with st.expander("ℹ️ Details"):
-            st.write(f"**Expected mean:** {height_mean:.1f} cm")
-            st.write(f"**Standard deviation:** {height_sd:.2f} cm")
-            st.write(f"**Age:** {today['age_months']} months")
+            st.warning("⚠️ Z-score not available")
+            st.info(f"Height data not available for {today['age_months']} months in {st.session_state.data_source} database")
 
     with col2:
         st.subheader("⚖️ Weight Analysis")
@@ -657,23 +662,28 @@ if st.session_state.today_measurement:
             weight_z, weight_perc, weight_mean, weight_sd = calculate_z_score(
                 today['age_months'], today['weight'], 'weight', today['gender'], weight_data_source
             )
-            weight_interp, weight_status = interpret_z_score(weight_z, 'weight')
 
             st.metric("Weight", f"{today['weight']:.1f} kg")
-            st.metric("Z-score", f"{weight_z:.2f}")
-            st.metric("Percentile", f"{weight_perc:.1f}%")
 
-            if weight_status == "success":
-                st.success(weight_interp)
-            elif weight_status == "warning":
-                st.warning(weight_interp)
+            if weight_z is not None:
+                weight_interp, weight_status = interpret_z_score(weight_z, 'weight')
+                st.metric("Z-score", f"{weight_z:.2f}")
+                st.metric("Percentile", f"{weight_perc:.1f}%")
+
+                if weight_status == "success":
+                    st.success(weight_interp)
+                elif weight_status == "warning":
+                    st.warning(weight_interp)
+                else:
+                    st.error(weight_interp)
+
+                with st.expander("ℹ️ Details"):
+                    st.write(f"**Expected mean:** {weight_mean:.1f} kg")
+                    st.write(f"**Standard deviation:** {weight_sd:.2f} kg")
+                    st.write(f"**Age:** {today['age_months']} months")
             else:
-                st.error(weight_interp)
-
-            with st.expander("ℹ️ Details"):
-                st.write(f"**Expected mean:** {weight_mean:.1f} kg")
-                st.write(f"**Standard deviation:** {weight_sd:.2f} kg")
-                st.write(f"**Age:** {today['age_months']} months")
+                st.warning("⚠️ Z-score not available")
+                st.info(f"Weight data not available for {today['age_months']} months in {weight_data_source} database")
 
     with col3:
         st.subheader("📊 BMI Analysis")
