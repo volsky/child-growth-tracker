@@ -230,6 +230,30 @@ def calculate_age_in_months(birth_date, measurement_date):
 
     return total_months
 
+def get_default_measurements(age_months, gender, data_source='WHO'):
+    """Get 50th percentile (median) values for height and weight based on age and gender"""
+    # Get height data
+    height_data = get_height_data(gender, data_source)
+    weight_data = get_weight_data(gender, data_source)
+
+    # Default fallback values
+    default_height = 75.0
+    default_weight = 10.0
+
+    if not height_data.empty and age_months >= height_data['age_months'].min() and age_months <= height_data['age_months'].max():
+        # Interpolate to get 50th percentile for exact age
+        f_height = interpolate.interp1d(height_data['age_months'], height_data['p50'],
+                                        kind='linear', fill_value='extrapolate')
+        default_height = float(f_height(age_months))
+
+    if not weight_data.empty and age_months >= weight_data['age_months'].min() and age_months <= weight_data['age_months'].max():
+        # Interpolate to get 50th percentile for exact age
+        f_weight = interpolate.interp1d(weight_data['age_months'], weight_data['p50'],
+                                        kind='linear', fill_value='extrapolate')
+        default_weight = float(f_weight(age_months))
+
+    return round(default_height, 1), round(default_weight, 1)
+
 def generate_pdf_report(child_info, today_measurement, data_points, height_fig, weight_fig, bmi_fig=None, data_source='WHO'):
     """Generate PDF report with Z-scores and charts"""
     buffer = BytesIO()
@@ -501,8 +525,11 @@ with st.sidebar:
         age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], today_date)
         st.info(f"Age: {age_months} months ({age_months // 12} years, {age_months % 12} months)")
 
-        today_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=75.0, step=0.1, key="today_height")
-        today_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=10.0, step=0.1, key="today_weight")
+        # Get 50th percentile defaults for this age and gender
+        default_height, default_weight = get_default_measurements(age_months, st.session_state.child_info['gender'], st.session_state.data_source)
+
+        today_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=default_height, step=0.1, key="today_height")
+        today_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=default_weight, step=0.1, key="today_weight")
 
         # Calculate and display BMI automatically
         if today_height > 0 and today_weight > 0:
@@ -538,8 +565,11 @@ with st.sidebar:
         hist_age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], hist_date)
         st.info(f"Age: {hist_age_months} months")
 
-        hist_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=70.0, step=0.1, key="hist_height")
-        hist_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=9.0, step=0.1, key="hist_weight")
+        # Get 50th percentile defaults for this age and gender
+        hist_default_height, hist_default_weight = get_default_measurements(hist_age_months, st.session_state.child_info['gender'], st.session_state.data_source)
+
+        hist_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=hist_default_height, step=0.1, key="hist_height")
+        hist_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=hist_default_weight, step=0.1, key="hist_weight")
 
         # Calculate and display BMI automatically for historical data
         if hist_height > 0 and hist_weight > 0:
