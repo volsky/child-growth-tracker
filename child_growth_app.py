@@ -158,16 +158,32 @@ def calculate_z_score(age_months, measurement, measurement_type, gender, data_so
     if mean_col not in stats.columns or sd_col not in stats.columns:
         return None, None, None, None
 
+    # Remove rows with NaN values for the columns we're interpolating
+    # This is crucial because outer merge in get_growth_statistics can create NaN rows
+    valid_rows = stats['age_months'].notna() & stats[mean_col].notna() & stats[sd_col].notna()
+    stats_clean = stats[valid_rows].copy()
+
+    if stats_clean.empty:
+        return None, None, None, None
+
     # Interpolate to get mean and SD for exact age
-    f_mean = interpolate.interp1d(stats['age_months'], stats[mean_col],
+    f_mean = interpolate.interp1d(stats_clean['age_months'], stats_clean[mean_col],
                                    kind='linear', fill_value='extrapolate')
-    f_sd = interpolate.interp1d(stats['age_months'], stats[sd_col],
+    f_sd = interpolate.interp1d(stats_clean['age_months'], stats_clean[sd_col],
                                  kind='linear', fill_value='extrapolate')
 
     mean = float(f_mean(age_months))
     sd = float(f_sd(age_months))
 
+    # Check for NaN or invalid values
+    if pd.isna(mean) or pd.isna(sd) or sd == 0:
+        return None, None, None, None
+
     z_score = (measurement - mean) / sd
+
+    # Check if z_score is NaN
+    if pd.isna(z_score):
+        return None, None, None, None
 
     # Calculate percentile
     percentile = norm.cdf(z_score) * 100
