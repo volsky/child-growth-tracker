@@ -282,8 +282,29 @@ Birth Date: {child_info['birth_date'].strftime('%Y-%m-%d')}
                 today_measurement['age_months'], today_measurement['weight'], 'weight', today_measurement['gender'], data_source
             )
 
-            height_interp, _ = interpret_z_score(height_z, 'height')
-            weight_interp, _ = interpret_z_score(weight_z, 'weight')
+            # Build height analysis text
+            height_text = f"  Measurement: {today_measurement['height']:.1f} cm\n"
+            if height_z is not None:
+                height_interp, _ = interpret_z_score(height_z, 'height')
+                height_text += f"""  Z-score: {height_z:.2f}
+  Percentile: {height_perc:.1f}%
+  Interpretation: {height_interp}
+  Expected mean: {height_mean:.1f} cm
+  Standard deviation: {height_sd:.2f} cm"""
+            else:
+                height_text += "  Z-score: Not available for this age/source"
+
+            # Build weight analysis text
+            weight_text = f"  Measurement: {today_measurement['weight']:.1f} kg\n"
+            if weight_z is not None:
+                weight_interp, _ = interpret_z_score(weight_z, 'weight')
+                weight_text += f"""  Z-score: {weight_z:.2f}
+  Percentile: {weight_perc:.1f}%
+  Interpretation: {weight_interp}
+  Expected mean: {weight_mean:.1f} kg
+  Standard deviation: {weight_sd:.2f} kg"""
+            else:
+                weight_text += "  Z-score: Not available for this age/source"
 
             # Check if BMI data is available and calculate BMI Z-score
             bmi_text = ""
@@ -317,20 +338,10 @@ Today's Measurement ({today_measurement['date'].strftime('%Y-%m-%d')}):
 Age: {today_measurement['age_months']} months ({today_measurement['age_months'] // 12} years, {today_measurement['age_months'] % 12} months)
 
 Height Analysis:
-  Measurement: {today_measurement['height']:.1f} cm
-  Z-score: {height_z:.2f}
-  Percentile: {height_perc:.1f}%
-  Interpretation: {height_interp}
-  Expected mean: {height_mean:.1f} cm
-  Standard deviation: {height_sd:.2f} cm
+{height_text}
 
 Weight Analysis:
-  Measurement: {today_measurement['weight']:.1f} kg
-  Z-score: {weight_z:.2f}
-  Percentile: {weight_perc:.1f}%
-  Interpretation: {weight_interp}
-  Expected mean: {weight_mean:.1f} kg
-  Standard deviation: {weight_sd:.2f} kg
+{weight_text}
 {bmi_text}"""
             plt.text(0.1, 0.72, today_text, fontsize=10, verticalalignment='top',
                     fontfamily='monospace', transform=fig.transFigure)
