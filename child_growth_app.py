@@ -528,8 +528,9 @@ with st.sidebar:
         # Get 50th percentile defaults for this age and gender
         default_height, default_weight = get_default_measurements(age_months, st.session_state.child_info['gender'], st.session_state.data_source)
 
-        today_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=default_height, step=0.1, key="today_height")
-        today_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=default_weight, step=0.1, key="today_weight")
+        # Use age_months in key to reset defaults when date changes
+        today_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=default_height, step=0.1, key=f"today_height_{age_months}")
+        today_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=default_weight, step=0.1, key=f"today_weight_{age_months}")
 
         # Calculate and display BMI automatically
         if today_height > 0 and today_weight > 0:
@@ -568,8 +569,9 @@ with st.sidebar:
         # Get 50th percentile defaults for this age and gender
         hist_default_height, hist_default_weight = get_default_measurements(hist_age_months, st.session_state.child_info['gender'], st.session_state.data_source)
 
-        hist_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=hist_default_height, step=0.1, key="hist_height")
-        hist_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=hist_default_weight, step=0.1, key="hist_weight")
+        # Use age_months in key to reset defaults when date changes
+        hist_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=hist_default_height, step=0.1, key=f"hist_height_{hist_age_months}")
+        hist_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=hist_default_weight, step=0.1, key=f"hist_weight_{hist_age_months}")
 
         # Calculate and display BMI automatically for historical data
         if hist_height > 0 and hist_weight > 0:
