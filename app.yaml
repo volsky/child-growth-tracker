@@ -1,9 +1,6 @@
-runtime: python39
+runtime: python
 env: flex
 entrypoint: streamlit run child_growth_app.py --server.port=$PORT --server.address=0.0.0.0
-
-runtime_config:
-  python_version: 3.9
 
 # Automatic scaling configuration
 automatic_scaling:
