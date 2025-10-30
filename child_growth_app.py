@@ -158,16 +158,32 @@ def calculate_z_score(age_months, measurement, measurement_type, gender, data_so
     if mean_col not in stats.columns or sd_col not in stats.columns:
         return None, None, None, None
 
+    # Remove rows with NaN values for the columns we're interpolating
+    # This is crucial because outer merge in get_growth_statistics can create NaN rows
+    valid_rows = stats['age_months'].notna() & stats[mean_col].notna() & stats[sd_col].notna()
+    stats_clean = stats[valid_rows].copy()
+
+    if stats_clean.empty:
+        return None, None, None, None
+
     # Interpolate to get mean and SD for exact age
-    f_mean = interpolate.interp1d(stats['age_months'], stats[mean_col],
+    f_mean = interpolate.interp1d(stats_clean['age_months'], stats_clean[mean_col],
                                    kind='linear', fill_value='extrapolate')
-    f_sd = interpolate.interp1d(stats['age_months'], stats[sd_col],
+    f_sd = interpolate.interp1d(stats_clean['age_months'], stats_clean[sd_col],
                                  kind='linear', fill_value='extrapolate')
 
     mean = float(f_mean(age_months))
     sd = float(f_sd(age_months))
 
+    # Check for NaN or invalid values
+    if pd.isna(mean) or pd.isna(sd) or sd == 0:
+        return None, None, None, None
+
     z_score = (measurement - mean) / sd
+
+    # Check if z_score is NaN
+    if pd.isna(z_score):
+        return None, None, None, None
 
     # Calculate percentile
     percentile = norm.cdf(z_score) * 100
@@ -282,8 +298,29 @@ Birth Date: {child_info['birth_date'].strftime('%Y-%m-%d')}
                 today_measurement['age_months'], today_measurement['weight'], 'weight', today_measurement['gender'], data_source
             )
 
-            height_interp, _ = interpret_z_score(height_z, 'height')
-            weight_interp, _ = interpret_z_score(weight_z, 'weight')
+            # Build height analysis text
+            height_text = f"  Measurement: {today_measurement['height']:.1f} cm\n"
+            if height_z is not None:
+                height_interp, _ = interpret_z_score(height_z, 'height')
+                height_text += f"""  Z-score: {height_z:.2f}
+  Percentile: {height_perc:.1f}%
+  Interpretation: {height_interp}
+  Expected mean: {height_mean:.1f} cm
+  Standard deviation: {height_sd:.2f} cm"""
+            else:
+                height_text += "  Z-score: Not available for this age/source"
+
+            # Build weight analysis text
+            weight_text = f"  Measurement: {today_measurement['weight']:.1f} kg\n"
+            if weight_z is not None:
+                weight_interp, _ = interpret_z_score(weight_z, 'weight')
+                weight_text += f"""  Z-score: {weight_z:.2f}
+  Percentile: {weight_perc:.1f}%
+  Interpretation: {weight_interp}
+  Expected mean: {weight_mean:.1f} kg
+  Standard deviation: {weight_sd:.2f} kg"""
+            else:
+                weight_text += "  Z-score: Not available for this age/source"
 
             # Check if BMI data is available and calculate BMI Z-score
             bmi_text = ""
@@ -317,20 +354,10 @@ Today's Measurement ({today_measurement['date'].strftime('%Y-%m-%d')}):
 Age: {today_measurement['age_months']} months ({today_measurement['age_months'] // 12} years, {today_measurement['age_months'] % 12} months)
 
 Height Analysis:
-  Measurement: {today_measurement['height']:.1f} cm
-  Z-score: {height_z:.2f}
-  Percentile: {height_perc:.1f}%
-  Interpretation: {height_interp}
-  Expected mean: {height_mean:.1f} cm
-  Standard deviation: {height_sd:.2f} cm
+{height_text}
 
 Weight Analysis:
-  Measurement: {today_measurement['weight']:.1f} kg
-  Z-score: {weight_z:.2f}
-  Percentile: {weight_perc:.1f}%
-  Interpretation: {weight_interp}
-  Expected mean: {weight_mean:.1f} kg
-  Standard deviation: {weight_sd:.2f} kg
+{weight_text}
 {bmi_text}"""
             plt.text(0.1, 0.72, today_text, fontsize=10, verticalalignment='top',
                     fontfamily='monospace', transform=fig.transFigure)
@@ -622,23 +649,28 @@ if st.session_state.today_measurement:
         height_z, height_perc, height_mean, height_sd = calculate_z_score(
             today['age_months'], today['height'], 'height', today['gender'], st.session_state.data_source
         )
-        height_interp, height_status = interpret_z_score(height_z, 'height')
 
         st.metric("Height", f"{today['height']:.1f} cm")
-        st.metric("Z-score", f"{height_z:.2f}")
-        st.metric("Percentile", f"{height_perc:.1f}%")
 
-        if height_status == "success":
-            st.success(height_interp)
-        elif height_status == "warning":
-            st.warning(height_interp)
+        if height_z is not None:
+            height_interp, height_status = interpret_z_score(height_z, 'height')
+            st.metric("Z-score", f"{height_z:.2f}")
+            st.metric("Percentile", f"{height_perc:.1f}%")
+
+            if height_status == "success":
+                st.success(height_interp)
+            elif height_status == "warning":
+                st.warning(height_interp)
+            else:
+                st.error(height_interp)
+
+            with st.expander("ℹ️ Details"):
+                st.write(f"**Expected mean:** {height_mean:.1f} cm")
+                st.write(f"**Standard deviation:** {height_sd:.2f} cm")
+                st.write(f"**Age:** {today['age_months']} months")
         else:
-            st.error(height_interp)
-
-        with st.expander("ℹ️ Details"):
-            st.write(f"**Expected mean:** {height_mean:.1f} cm")
-            st.write(f"**Standard deviation:** {height_sd:.2f} cm")
-            st.write(f"**Age:** {today['age_months']} months")
+            st.warning("⚠️ Z-score not available")
+            st.info(f"Height data not available for {today['age_months']} months in {st.session_state.data_source} database")
 
     with col2:
         st.subheader("⚖️ Weight Analysis")
@@ -657,23 +689,28 @@ if st.session_state.today_measurement:
             weight_z, weight_perc, weight_mean, weight_sd = calculate_z_score(
                 today['age_months'], today['weight'], 'weight', today['gender'], weight_data_source
             )
-            weight_interp, weight_status = interpret_z_score(weight_z, 'weight')
 
             st.metric("Weight", f"{today['weight']:.1f} kg")
-            st.metric("Z-score", f"{weight_z:.2f}")
-            st.metric("Percentile", f"{weight_perc:.1f}%")
 
-            if weight_status == "success":
-                st.success(weight_interp)
-            elif weight_status == "warning":
-                st.warning(weight_interp)
+            if weight_z is not None:
+                weight_interp, weight_status = interpret_z_score(weight_z, 'weight')
+                st.metric("Z-score", f"{weight_z:.2f}")
+                st.metric("Percentile", f"{weight_perc:.1f}%")
+
+                if weight_status == "success":
+                    st.success(weight_interp)
+                elif weight_status == "warning":
+                    st.warning(weight_interp)
+                else:
+                    st.error(weight_interp)
+
+                with st.expander("ℹ️ Details"):
+                    st.write(f"**Expected mean:** {weight_mean:.1f} kg")
+                    st.write(f"**Standard deviation:** {weight_sd:.2f} kg")
+                    st.write(f"**Age:** {today['age_months']} months")
             else:
-                st.error(weight_interp)
-
-            with st.expander("ℹ️ Details"):
-                st.write(f"**Expected mean:** {weight_mean:.1f} kg")
-                st.write(f"**Standard deviation:** {weight_sd:.2f} kg")
-                st.write(f"**Age:** {today['age_months']} months")
+                st.warning("⚠️ Z-score not available")
+                st.info(f"Weight data not available for {today['age_months']} months in {weight_data_source} database")
 
     with col3:
         st.subheader("📊 BMI Analysis")
@@ -736,21 +773,54 @@ if st.session_state.child_info:
     else:
         current_age = calculate_age_in_months(st.session_state.child_info['birth_date'], date.today())
 
+    # Collect all age values from data points
+    all_ages = []
+    if st.session_state.data_points:
+        df_all = pd.DataFrame(st.session_state.data_points)
+        all_ages.extend(df_all['age'].tolist())
+    if st.session_state.today_measurement:
+        all_ages.append(st.session_state.today_measurement['age_months'])
+
     # Dynamic X-axis range based on age and data source
     # CDC data: 24-240 months (2-20 years)
     # WHO data: 0-228 months (0-19 years)
     if st.session_state.data_source == 'CDC':
-        # CDC covers 2-20 years (24-240 months)
-        x_range = [24, 240]
-        age_group = "2-20 years"
+        # CDC covers 2-20 years - use dynamic ranges
+        if current_age <= 60:  # 2-5 years
+            x_range = [24, 60]  # Show 2-5 years
+            age_group = "2-5 years"
+        elif current_age <= 120:  # 5-10 years
+            x_range = [60, 120]  # Show 5-10 years
+            age_group = "5-10 years"
+        else:  # 10+ years
+            x_range = [120, 240]  # Show 10-20 years
+            age_group = "10-20 years"
     else:  # WHO
-        # Use 0-5 year range for young children, 5-19 year range for older children
-        if current_age <= 60:  # 0-5 years
+        # Use dynamic age range based on child's current age
+        if current_age <= 24:  # 0-2 years
+            x_range = [0, 30]  # Show 0-2.5 years (add padding beyond current age)
+            age_group = "0-2 years"
+        elif current_age <= 60:  # 2-5 years
             x_range = [0, 60]  # Show 0-5 years
             age_group = "0-5 years"
         else:  # 5+ years
             x_range = [60, 228]  # Show 5-19 years
             age_group = "5-19 years"
+
+    # Extend x_range to accommodate all data points if they fall outside
+    if all_ages:
+        min_age = min(all_ages)
+        max_age = max(all_ages)
+
+        # Extend lower bound if needed
+        if min_age < x_range[0]:
+            x_range[0] = max(0 if st.session_state.data_source == 'WHO' else 24, min_age - 2)  # Add small buffer
+
+        # Extend upper bound if needed
+        if max_age > x_range[1]:
+            # Add 10% buffer or at least 6 months
+            buffer = max(6, int((max_age - x_range[0]) * 0.1))
+            x_range[1] = min(228 if st.session_state.data_source == 'WHO' else 240, max_age + buffer)
 
     st.header(f"📊 Growth Charts - {selected_gender} ({st.session_state.data_source}) - {age_group}")
 
@@ -808,6 +878,24 @@ if st.session_state.child_info:
         if not visible_data.empty:
             y_min = visible_data['p3'].min() * 0.95  # Add 5% padding below
             y_max = visible_data['p97'].max() * 1.02  # Add 2% padding above
+
+            # Also check actual data points and extend y-axis if needed
+            actual_heights = []
+            if st.session_state.data_points:
+                df = pd.DataFrame(st.session_state.data_points)
+                actual_heights.extend(df['height'].tolist())
+            if st.session_state.today_measurement:
+                actual_heights.append(st.session_state.today_measurement['height'])
+
+            if actual_heights:
+                min_height = min(actual_heights)
+                max_height = max(actual_heights)
+                # Extend y_min if data point is below
+                if min_height < y_min:
+                    y_min = min_height * 0.95
+                # Extend y_max if data point is above
+                if max_height > y_max:
+                    y_max = max_height * 1.05
         else:
             y_min = None
             y_max = None
@@ -884,6 +972,24 @@ if st.session_state.child_info:
             if not visible_weight_data.empty:
                 y_min_weight = visible_weight_data['p3'].min() * 0.90  # Add 10% padding below
                 y_max_weight = visible_weight_data['p97'].max() * 1.05  # Add 5% padding above
+
+                # Also check actual data points and extend y-axis if needed
+                actual_weights = []
+                if st.session_state.data_points:
+                    df = pd.DataFrame(st.session_state.data_points)
+                    actual_weights.extend(df['weight'].tolist())
+                if st.session_state.today_measurement:
+                    actual_weights.append(st.session_state.today_measurement['weight'])
+
+                if actual_weights:
+                    min_weight = min(actual_weights)
+                    max_weight = max(actual_weights)
+                    # Extend y_min if data point is below
+                    if min_weight < y_min_weight:
+                        y_min_weight = min_weight * 0.90
+                    # Extend y_max if data point is above
+                    if max_weight > y_max_weight:
+                        y_max_weight = max_weight * 1.10
             else:
                 y_min_weight = None
                 y_max_weight = None
@@ -977,15 +1083,44 @@ if st.session_state.child_info:
             if not visible_bmi_data.empty:
                 y_min_bmi = visible_bmi_data['p3'].min() * 0.90  # Add 10% padding below
                 y_max_bmi = visible_bmi_data['p97'].max() * 1.05  # Add 5% padding above
+
+                # Also check actual data points and extend y-axis if needed
+                actual_bmis = []
+                if st.session_state.data_points:
+                    df = pd.DataFrame(st.session_state.data_points)
+                    if 'bmi' in df.columns:
+                        actual_bmis.extend(df[df['bmi'].notna()]['bmi'].tolist())
+                if st.session_state.today_measurement and 'bmi' in st.session_state.today_measurement and st.session_state.today_measurement['bmi'] is not None:
+                    actual_bmis.append(st.session_state.today_measurement['bmi'])
+
+                if actual_bmis:
+                    min_bmi = min(actual_bmis)
+                    max_bmi = max(actual_bmis)
+                    # Extend y_min if data point is below
+                    if min_bmi < y_min_bmi:
+                        y_min_bmi = min_bmi * 0.90
+                    # Extend y_max if data point is above
+                    if max_bmi > y_max_bmi:
+                        y_max_bmi = max_bmi * 1.10
             else:
                 y_min_bmi = None
                 y_max_bmi = None
 
-            # Set X-axis range based on data source
+            # Set X-axis range based on data source - start with defaults
             if st.session_state.data_source == 'WHO':
                 bmi_x_range = [61, 228]  # WHO: 5-19 years
             else:  # CDC
                 bmi_x_range = [24, 240]  # CDC: 2-20 years
+
+            # Extend BMI x-axis to accommodate all BMI data points if needed
+            if all_ages:
+                min_age = min(all_ages)
+                max_age = max(all_ages)
+                if min_age < bmi_x_range[0]:
+                    bmi_x_range[0] = max(0, min_age - 2)
+                if max_age > bmi_x_range[1]:
+                    buffer = max(6, int((max_age - bmi_x_range[1]) * 0.1))
+                    bmi_x_range[1] = min(228 if st.session_state.data_source == 'WHO' else 240, max_age + buffer)
 
             # Determine BMI age range based on data source
             if st.session_state.data_source == 'WHO':
