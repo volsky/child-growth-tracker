@@ -736,21 +736,54 @@ if st.session_state.child_info:
     else:
         current_age = calculate_age_in_months(st.session_state.child_info['birth_date'], date.today())
 
+    # Collect all age values from data points
+    all_ages = []
+    if st.session_state.data_points:
+        df_all = pd.DataFrame(st.session_state.data_points)
+        all_ages.extend(df_all['age'].tolist())
+    if st.session_state.today_measurement:
+        all_ages.append(st.session_state.today_measurement['age_months'])
+
     # Dynamic X-axis range based on age and data source
     # CDC data: 24-240 months (2-20 years)
     # WHO data: 0-228 months (0-19 years)
     if st.session_state.data_source == 'CDC':
-        # CDC covers 2-20 years (24-240 months)
-        x_range = [24, 240]
-        age_group = "2-20 years"
+        # CDC covers 2-20 years - use dynamic ranges
+        if current_age <= 60:  # 2-5 years
+            x_range = [24, 60]  # Show 2-5 years
+            age_group = "2-5 years"
+        elif current_age <= 120:  # 5-10 years
+            x_range = [60, 120]  # Show 5-10 years
+            age_group = "5-10 years"
+        else:  # 10+ years
+            x_range = [120, 240]  # Show 10-20 years
+            age_group = "10-20 years"
     else:  # WHO
-        # Use 0-5 year range for young children, 5-19 year range for older children
-        if current_age <= 60:  # 0-5 years
+        # Use dynamic age range based on child's current age
+        if current_age <= 24:  # 0-2 years
+            x_range = [0, 30]  # Show 0-2.5 years (add padding beyond current age)
+            age_group = "0-2 years"
+        elif current_age <= 60:  # 2-5 years
             x_range = [0, 60]  # Show 0-5 years
             age_group = "0-5 years"
         else:  # 5+ years
             x_range = [60, 228]  # Show 5-19 years
             age_group = "5-19 years"
+
+    # Extend x_range to accommodate all data points if they fall outside
+    if all_ages:
+        min_age = min(all_ages)
+        max_age = max(all_ages)
+
+        # Extend lower bound if needed
+        if min_age < x_range[0]:
+            x_range[0] = max(0 if st.session_state.data_source == 'WHO' else 24, min_age - 2)  # Add small buffer
+
+        # Extend upper bound if needed
+        if max_age > x_range[1]:
+            # Add 10% buffer or at least 6 months
+            buffer = max(6, int((max_age - x_range[0]) * 0.1))
+            x_range[1] = min(228 if st.session_state.data_source == 'WHO' else 240, max_age + buffer)
 
     st.header(f"📊 Growth Charts - {selected_gender} ({st.session_state.data_source}) - {age_group}")
 
@@ -808,6 +841,24 @@ if st.session_state.child_info:
         if not visible_data.empty:
             y_min = visible_data['p3'].min() * 0.95  # Add 5% padding below
             y_max = visible_data['p97'].max() * 1.02  # Add 2% padding above
+
+            # Also check actual data points and extend y-axis if needed
+            actual_heights = []
+            if st.session_state.data_points:
+                df = pd.DataFrame(st.session_state.data_points)
+                actual_heights.extend(df['height'].tolist())
+            if st.session_state.today_measurement:
+                actual_heights.append(st.session_state.today_measurement['height'])
+
+            if actual_heights:
+                min_height = min(actual_heights)
+                max_height = max(actual_heights)
+                # Extend y_min if data point is below
+                if min_height < y_min:
+                    y_min = min_height * 0.95
+                # Extend y_max if data point is above
+                if max_height > y_max:
+                    y_max = max_height * 1.05
         else:
             y_min = None
             y_max = None
@@ -884,6 +935,24 @@ if st.session_state.child_info:
             if not visible_weight_data.empty:
                 y_min_weight = visible_weight_data['p3'].min() * 0.90  # Add 10% padding below
                 y_max_weight = visible_weight_data['p97'].max() * 1.05  # Add 5% padding above
+
+                # Also check actual data points and extend y-axis if needed
+                actual_weights = []
+                if st.session_state.data_points:
+                    df = pd.DataFrame(st.session_state.data_points)
+                    actual_weights.extend(df['weight'].tolist())
+                if st.session_state.today_measurement:
+                    actual_weights.append(st.session_state.today_measurement['weight'])
+
+                if actual_weights:
+                    min_weight = min(actual_weights)
+                    max_weight = max(actual_weights)
+                    # Extend y_min if data point is below
+                    if min_weight < y_min_weight:
+                        y_min_weight = min_weight * 0.90
+                    # Extend y_max if data point is above
+                    if max_weight > y_max_weight:
+                        y_max_weight = max_weight * 1.10
             else:
                 y_min_weight = None
                 y_max_weight = None
@@ -977,15 +1046,44 @@ if st.session_state.child_info:
             if not visible_bmi_data.empty:
                 y_min_bmi = visible_bmi_data['p3'].min() * 0.90  # Add 10% padding below
                 y_max_bmi = visible_bmi_data['p97'].max() * 1.05  # Add 5% padding above
+
+                # Also check actual data points and extend y-axis if needed
+                actual_bmis = []
+                if st.session_state.data_points:
+                    df = pd.DataFrame(st.session_state.data_points)
+                    if 'bmi' in df.columns:
+                        actual_bmis.extend(df[df['bmi'].notna()]['bmi'].tolist())
+                if st.session_state.today_measurement and 'bmi' in st.session_state.today_measurement and st.session_state.today_measurement['bmi'] is not None:
+                    actual_bmis.append(st.session_state.today_measurement['bmi'])
+
+                if actual_bmis:
+                    min_bmi = min(actual_bmis)
+                    max_bmi = max(actual_bmis)
+                    # Extend y_min if data point is below
+                    if min_bmi < y_min_bmi:
+                        y_min_bmi = min_bmi * 0.90
+                    # Extend y_max if data point is above
+                    if max_bmi > y_max_bmi:
+                        y_max_bmi = max_bmi * 1.10
             else:
                 y_min_bmi = None
                 y_max_bmi = None
 
-            # Set X-axis range based on data source
+            # Set X-axis range based on data source - start with defaults
             if st.session_state.data_source == 'WHO':
                 bmi_x_range = [61, 228]  # WHO: 5-19 years
             else:  # CDC
                 bmi_x_range = [24, 240]  # CDC: 2-20 years
+
+            # Extend BMI x-axis to accommodate all BMI data points if needed
+            if all_ages:
+                min_age = min(all_ages)
+                max_age = max(all_ages)
+                if min_age < bmi_x_range[0]:
+                    bmi_x_range[0] = max(0, min_age - 2)
+                if max_age > bmi_x_range[1]:
+                    buffer = max(6, int((max_age - bmi_x_range[1]) * 0.1))
+                    bmi_x_range[1] = min(228 if st.session_state.data_source == 'WHO' else 240, max_age + buffer)
 
             # Determine BMI age range based on data source
             if st.session_state.data_source == 'WHO':
