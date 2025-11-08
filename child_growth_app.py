@@ -780,13 +780,23 @@ if st.session_state.child_info:
                     'gender': st.session_state.child_info['gender'],
                     'birth_date': st.session_state.child_info['birth_date'].strftime('%Y-%m-%d')
                 },
-                'data_points': []
+                'data_points': [],
+                'today_measurement': None
             }
+
+            # Export historical data points
             for point in st.session_state.data_points:
                 export_point = point.copy()
                 if 'date' in export_point:
                     export_point['date'] = export_point['date'].strftime('%Y-%m-%d')
                 export_data['data_points'].append(export_point)
+
+            # Export today's measurement
+            if st.session_state.today_measurement:
+                today_export = st.session_state.today_measurement.copy()
+                if 'date' in today_export:
+                    today_export['date'] = today_export['date'].strftime('%Y-%m-%d')
+                export_data['today_measurement'] = today_export
 
             yaml_str = yaml.dump(export_data, default_flow_style=False, sort_keys=False)
             st.download_button(
@@ -820,6 +830,13 @@ if st.session_state.child_info:
                         if 'date' in point_copy:
                             point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
                         st.session_state.data_points.append(point_copy)
+
+                # Load today's measurement
+                if 'today_measurement' in import_data and import_data['today_measurement'] is not None:
+                    today_copy = import_data['today_measurement'].copy()
+                    if 'date' in today_copy:
+                        today_copy['date'] = datetime.strptime(today_copy['date'], '%Y-%m-%d').date()
+                    st.session_state.today_measurement = today_copy
 
                 st.success("✅ Data imported successfully!")
                 st.rerun()
