@@ -9,6 +9,8 @@ import os
 from io import BytesIO
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import json
+import yaml
 
 # Load Growth Standards from CSV files
 # Data sources:
@@ -761,6 +763,237 @@ if st.session_state.today_measurement:
 
     st.divider()
 
+# Editable Measurements Table with Z-scores
+if st.session_state.child_info:
+    st.header("📋 Measurements Table")
+
+    # Import/Export section
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        # Export to JSON
+        if st.button("📤 Export JSON", use_container_width=True):
+            export_data = {
+                'child_info': {
+                    'gender': st.session_state.child_info['gender'],
+                    'birth_date': st.session_state.child_info['birth_date'].strftime('%Y-%m-%d')
+                },
+                'data_points': []
+            }
+            for point in st.session_state.data_points:
+                export_point = point.copy()
+                if 'date' in export_point:
+                    export_point['date'] = export_point['date'].strftime('%Y-%m-%d')
+                export_data['data_points'].append(export_point)
+
+            json_str = json.dumps(export_data, indent=2)
+            st.download_button(
+                label="Download JSON",
+                data=json_str,
+                file_name=f"growth_data_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.json",
+                mime="application/json"
+            )
+
+    with col2:
+        # Export to YAML
+        if st.button("📤 Export YAML", use_container_width=True):
+            export_data = {
+                'child_info': {
+                    'gender': st.session_state.child_info['gender'],
+                    'birth_date': st.session_state.child_info['birth_date'].strftime('%Y-%m-%d')
+                },
+                'data_points': []
+            }
+            for point in st.session_state.data_points:
+                export_point = point.copy()
+                if 'date' in export_point:
+                    export_point['date'] = export_point['date'].strftime('%Y-%m-%d')
+                export_data['data_points'].append(export_point)
+
+            yaml_str = yaml.dump(export_data, default_flow_style=False, sort_keys=False)
+            st.download_button(
+                label="Download YAML",
+                data=yaml_str,
+                file_name=f"growth_data_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.yaml",
+                mime="application/x-yaml"
+            )
+
+    with col3:
+        # Import from file
+        uploaded_file = st.file_uploader("📥 Import", type=['json', 'yaml', 'yml'], key="import_file")
+        if uploaded_file is not None:
+            try:
+                file_content = uploaded_file.read().decode('utf-8')
+                if uploaded_file.name.endswith('.json'):
+                    import_data = json.loads(file_content)
+                else:  # yaml
+                    import_data = yaml.safe_load(file_content)
+
+                # Load child info
+                if 'child_info' in import_data:
+                    st.session_state.child_info = {
+                        'gender': import_data['child_info']['gender'],
+                        'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
+                    }
+
+                # Load data points
+                if 'data_points' in import_data:
+                    st.session_state.data_points = []
+                    for point in import_data['data_points']:
+                        point_copy = point.copy()
+                        if 'date' in point_copy:
+                            point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
+                        st.session_state.data_points.append(point_copy)
+
+                st.success("✅ Data imported successfully!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error importing file: {str(e)}")
+
+    with col4:
+        if st.button("🗑️ Clear All Data", use_container_width=True):
+            st.session_state.data_points = []
+            st.success("All data cleared!")
+            st.rerun()
+
+    # Create editable dataframe with z-scores
+    if st.session_state.data_points or st.session_state.today_measurement:
+        # Combine today's measurement with historical data
+        all_measurements = []
+
+        if st.session_state.today_measurement:
+            today = st.session_state.today_measurement.copy()
+            today['is_today'] = True
+            all_measurements.append(today)
+
+        for point in st.session_state.data_points:
+            point_copy = point.copy()
+            point_copy['is_today'] = False
+            all_measurements.append(point_copy)
+
+        # Sort by date
+        all_measurements.sort(key=lambda x: x['date'])
+
+        # Create dataframe with z-scores
+        table_data = []
+        for measurement in all_measurements:
+            # Get age in months (handle both 'age' and 'age_months' keys)
+            age_months = measurement.get('age_months', measurement.get('age', 0))
+
+            # Calculate z-scores
+            height_z, height_perc, _, _ = calculate_z_score(
+                age_months, measurement['height'], 'height',
+                measurement['gender'], st.session_state.data_source
+            )
+            weight_z, weight_perc, _, _ = calculate_z_score(
+                age_months, measurement['weight'], 'weight',
+                measurement['gender'], st.session_state.data_source
+            )
+
+            bmi_z = None
+            bmi_perc = None
+            if 'bmi' in measurement and measurement['bmi'] is not None:
+                bmi_available = False
+                if st.session_state.data_source == 'WHO' and age_months >= 61:
+                    bmi_available = True
+                elif st.session_state.data_source == 'CDC' and age_months >= 24:
+                    bmi_available = True
+
+                if bmi_available:
+                    bmi_z, bmi_perc, _, _ = calculate_z_score(
+                        age_months, measurement['bmi'], 'bmi',
+                        measurement['gender'], st.session_state.data_source
+                    )
+
+            row = {
+                'Date': measurement['date'].strftime('%Y-%m-%d'),
+                'Age (months)': age_months,
+                'Height (cm)': round(measurement['height'], 1),
+                'Height Z-score': round(height_z, 2) if height_z is not None else None,
+                'Height %ile': round(height_perc, 1) if height_perc is not None else None,
+                'Weight (kg)': round(measurement['weight'], 1),
+                'Weight Z-score': round(weight_z, 2) if weight_z is not None else None,
+                'Weight %ile': round(weight_perc, 1) if weight_perc is not None else None,
+                'BMI': round(measurement['bmi'], 2) if 'bmi' in measurement and measurement['bmi'] is not None else None,
+                'BMI Z-score': round(bmi_z, 2) if bmi_z is not None else None,
+                'BMI %ile': round(bmi_perc, 1) if bmi_perc is not None else None,
+                'Today': '🔸' if measurement.get('is_today', False) else ''
+            }
+            table_data.append(row)
+
+        df_table = pd.DataFrame(table_data)
+
+        # Display editable table
+        st.info("💡 Table shows all measurements with calculated Z-scores and percentiles. Edit values directly in the table.")
+
+        edited_df = st.data_editor(
+            df_table,
+            use_container_width=True,
+            num_rows="dynamic",
+            column_config={
+                "Date": st.column_config.TextColumn("Date", width="small"),
+                "Age (months)": st.column_config.NumberColumn("Age (months)", width="small"),
+                "Height (cm)": st.column_config.NumberColumn("Height (cm)", width="small", format="%.1f"),
+                "Height Z-score": st.column_config.NumberColumn("Height Z", width="small", format="%.2f"),
+                "Height %ile": st.column_config.NumberColumn("Height %", width="small", format="%.1f"),
+                "Weight (kg)": st.column_config.NumberColumn("Weight (kg)", width="small", format="%.1f"),
+                "Weight Z-score": st.column_config.NumberColumn("Weight Z", width="small", format="%.2f"),
+                "Weight %ile": st.column_config.NumberColumn("Weight %", width="small", format="%.1f"),
+                "BMI": st.column_config.NumberColumn("BMI", width="small", format="%.2f"),
+                "BMI Z-score": st.column_config.NumberColumn("BMI Z", width="small", format="%.2f"),
+                "BMI %ile": st.column_config.NumberColumn("BMI %", width="small", format="%.1f"),
+                "Today": st.column_config.TextColumn("📍", width="small")
+            },
+            hide_index=True,
+            key="measurements_table"
+        )
+
+        # Update session state with edited data
+        if st.button("💾 Save Table Changes", use_container_width=False, type="primary"):
+            try:
+                # Clear existing data points
+                st.session_state.data_points = []
+
+                # Process each row
+                for idx, row in edited_df.iterrows():
+                    if pd.notna(row['Date']) and pd.notna(row['Height (cm)']) and pd.notna(row['Weight (kg)']):
+                        measurement_date = datetime.strptime(row['Date'], '%Y-%m-%d').date()
+                        age_months = int(row['Age (months)'])
+                        height = float(row['Height (cm)'])
+                        weight = float(row['Weight (kg)'])
+                        bmi = calculate_bmi(height, weight) if height > 0 and weight > 0 else None
+
+                        # Check if this is today's measurement
+                        is_today_row = row.get('Today', '') == '🔸'
+
+                        if is_today_row:
+                            st.session_state.today_measurement = {
+                                'date': measurement_date,
+                                'age_months': age_months,
+                                'height': height,
+                                'weight': weight,
+                                'bmi': bmi,
+                                'gender': st.session_state.child_info['gender']
+                            }
+                        else:
+                            st.session_state.data_points.append({
+                                'date': measurement_date,
+                                'gender': st.session_state.child_info['gender'],
+                                'age': age_months,
+                                'height': height,
+                                'weight': weight,
+                                'bmi': bmi
+                            })
+
+                st.success("✅ Changes saved successfully!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error saving changes: {str(e)}")
+    else:
+        st.info("👆 Add measurements using the sidebar form or import from a file to see the data table.")
+
+    st.divider()
+
 # Main content - Visualizations
 if st.session_state.child_info:
     selected_gender = st.session_state.child_info['gender']
@@ -824,25 +1057,114 @@ if st.session_state.child_info:
 
     st.header(f"📊 Growth Charts - {selected_gender} ({st.session_state.data_source}) - {age_group}")
 
-    # For mobile: Use single column layout on narrow screens
-    # Streamlit automatically adjusts columns but we can control height
-    col1, col2 = st.columns([1, 1])
-
     # Height-for-Age Chart
-    with col1:
-        fig_height = go.Figure()
+    fig_height = go.Figure()
 
-        # Add WHO percentile lines (in reverse order for legend display)
-        colors = {'p3': 'lightcoral', 'p15': 'lightblue', 'p50': 'green',
-                 'p85': 'lightblue', 'p97': 'lightcoral'}
-        names = {'p3': '3rd percentile', 'p15': '15th percentile',
-                'p50': '50th percentile (median)', 'p85': '85th percentile',
-                'p97': '97th percentile'}
+    # Add WHO percentile lines (in reverse order for legend display)
+    colors = {'p3': 'lightcoral', 'p15': 'lightblue', 'p50': 'green',
+             'p85': 'lightblue', 'p97': 'lightcoral'}
+    names = {'p3': '3rd percentile', 'p15': '15th percentile',
+            'p50': '50th percentile (median)', 'p85': '85th percentile',
+            'p97': '97th percentile'}
 
+    for percentile in ['p97', 'p85', 'p50', 'p15', 'p3']:
+        fig_height.add_trace(go.Scatter(
+            x=growth_height['age_months'],
+            y=growth_height[percentile],
+            mode='lines',
+            name=names[percentile],
+            line=dict(color=colors[percentile], width=2 if percentile == 'p50' else 1),
+            opacity=0.7
+        ))
+
+    # Add historical data points
+    if st.session_state.data_points:
+        df = pd.DataFrame(st.session_state.data_points)
+        fig_height.add_trace(go.Scatter(
+            x=df['age'],
+            y=df['height'],
+            mode='markers+lines',
+            name='Historical Measurements',
+            marker=dict(size=10, color='blue', symbol='circle'),
+            line=dict(color='blue', width=2, dash='dash')
+        ))
+
+    # Add today's measurement
+    if st.session_state.today_measurement:
+        today = st.session_state.today_measurement
+        fig_height.add_trace(go.Scatter(
+            x=[today['age_months']],
+            y=[today['height']],
+            mode='markers',
+            name="Today's Measurement",
+            marker=dict(size=15, color='orange', symbol='circle', line=dict(color='darkorange', width=2))
+        ))
+
+    # Calculate Y-axis range to show all percentiles properly
+    # Get min from 3rd percentile and max from 97th percentile in visible range
+    visible_data = growth_height[growth_height['age_months'].between(x_range[0], x_range[1])]
+    if not visible_data.empty:
+        y_min = visible_data['p3'].min() * 0.95  # Add 5% padding below
+        y_max = visible_data['p97'].max() * 1.02  # Add 2% padding above
+
+        # Also check actual data points and extend y-axis if needed
+        actual_heights = []
+        if st.session_state.data_points:
+            df = pd.DataFrame(st.session_state.data_points)
+            actual_heights.extend(df['height'].tolist())
+        if st.session_state.today_measurement:
+            actual_heights.append(st.session_state.today_measurement['height'])
+
+        if actual_heights:
+            min_height = min(actual_heights)
+            max_height = max(actual_heights)
+            # Extend y_min if data point is below
+            if min_height < y_min:
+                y_min = min_height * 0.95
+            # Extend y_max if data point is above
+            if max_height > y_max:
+                y_max = max_height * 1.05
+    else:
+        y_min = None
+        y_max = None
+
+    fig_height.update_layout(
+        title=f"Height-for-Age ({selected_gender}) - {age_group}",
+        xaxis_title="Age (months)",
+        yaxis_title="Height (cm)",
+        hovermode='closest',
+        showlegend=True,
+        height=500,
+        xaxis=dict(range=x_range),
+        yaxis=dict(range=[y_min, y_max] if y_min else None),
+        # Mobile optimization
+        font=dict(size=12),
+        margin=dict(l=50, r=20, t=50, b=50)
+    )
+
+    st.plotly_chart(fig_height, use_container_width=True)
+
+    # Weight-for-Age Chart
+    # Automatically switch to CDC if WHO doesn't have weight data for this age
+    chart_weight_source = st.session_state.data_source
+    if st.session_state.data_source == 'WHO' and current_age > 120:
+        chart_weight_source = 'CDC'
+        st.info("ℹ️ Automatically displaying CDC weight chart (WHO weight data only available up to 10 years)")
+
+    # Check if CDC data is available for this age
+    if chart_weight_source == 'CDC' and current_age < 24:
+        st.warning("⚠️ CDC Weight-for-Age Chart Not Available")
+        st.info("CDC data is only available from 2 years (24 months). Please use WHO data source for children under 2 years.")
+    else:
+        # Load appropriate weight data
+        growth_weight_chart = get_weight_data(selected_gender, chart_weight_source)
+        fig_weight = go.Figure()
+
+        # Add percentile lines (in reverse order for legend display)
         for percentile in ['p97', 'p85', 'p50', 'p15', 'p3']:
-            fig_height.add_trace(go.Scatter(
-                x=growth_height['age_months'],
-                y=growth_height[percentile],
+            fig_weight.add_trace(go.Scatter(
+                x=growth_weight_chart['age_months'],
+                y=growth_weight_chart[percentile],
                 mode='lines',
                 name=names[percentile],
                 line=dict(color=colors[percentile], width=2 if percentile == 'p50' else 1),
@@ -852,9 +1174,9 @@ if st.session_state.child_info:
         # Add historical data points
         if st.session_state.data_points:
             df = pd.DataFrame(st.session_state.data_points)
-            fig_height.add_trace(go.Scatter(
+            fig_weight.add_trace(go.Scatter(
                 x=df['age'],
-                y=df['height'],
+                y=df['weight'],
                 mode='markers+lines',
                 name='Historical Measurements',
                 marker=dict(size=10, color='blue', symbol='circle'),
@@ -864,157 +1186,62 @@ if st.session_state.child_info:
         # Add today's measurement
         if st.session_state.today_measurement:
             today = st.session_state.today_measurement
-            fig_height.add_trace(go.Scatter(
+            fig_weight.add_trace(go.Scatter(
                 x=[today['age_months']],
-                y=[today['height']],
+                y=[today['weight']],
                 mode='markers',
                 name="Today's Measurement",
-                marker=dict(size=20, color='red', symbol='star', line=dict(color='darkred', width=2))
+                marker=dict(size=15, color='orange', symbol='circle', line=dict(color='darkorange', width=2))
             ))
 
-        # Calculate Y-axis range to show all percentiles properly
-        # Get min from 3rd percentile and max from 97th percentile in visible range
-        visible_data = growth_height[growth_height['age_months'].between(x_range[0], x_range[1])]
-        if not visible_data.empty:
-            y_min = visible_data['p3'].min() * 0.95  # Add 5% padding below
-            y_max = visible_data['p97'].max() * 1.02  # Add 2% padding above
+        # Calculate Y-axis range for weight chart
+        visible_weight_data = growth_weight_chart[growth_weight_chart['age_months'].between(x_range[0], x_range[1])]
+        if not visible_weight_data.empty:
+            y_min_weight = visible_weight_data['p3'].min() * 0.90  # Add 10% padding below
+            y_max_weight = visible_weight_data['p97'].max() * 1.05  # Add 5% padding above
 
             # Also check actual data points and extend y-axis if needed
-            actual_heights = []
+            actual_weights = []
             if st.session_state.data_points:
                 df = pd.DataFrame(st.session_state.data_points)
-                actual_heights.extend(df['height'].tolist())
+                actual_weights.extend(df['weight'].tolist())
             if st.session_state.today_measurement:
-                actual_heights.append(st.session_state.today_measurement['height'])
+                actual_weights.append(st.session_state.today_measurement['weight'])
 
-            if actual_heights:
-                min_height = min(actual_heights)
-                max_height = max(actual_heights)
+            if actual_weights:
+                min_weight = min(actual_weights)
+                max_weight = max(actual_weights)
                 # Extend y_min if data point is below
-                if min_height < y_min:
-                    y_min = min_height * 0.95
+                if min_weight < y_min_weight:
+                    y_min_weight = min_weight * 0.90
                 # Extend y_max if data point is above
-                if max_height > y_max:
-                    y_max = max_height * 1.05
+                if max_weight > y_max_weight:
+                    y_max_weight = max_weight * 1.10
         else:
-            y_min = None
-            y_max = None
+            y_min_weight = None
+            y_max_weight = None
 
-        fig_height.update_layout(
-            title=f"Height-for-Age ({selected_gender}) - {age_group}",
+        # Determine age range text for title
+        if chart_weight_source == 'CDC':
+            weight_age_range = "2-20 years"
+        else:  # WHO
+            weight_age_range = "0-10 years"  # WHO weight-for-age covers 0-10 years
+
+        fig_weight.update_layout(
+            title=f"Weight-for-Age ({selected_gender}) - {chart_weight_source} - {weight_age_range}",
             xaxis_title="Age (months)",
-            yaxis_title="Height (cm)",
+            yaxis_title="Weight (kg)",
             hovermode='closest',
             showlegend=True,
             height=500,
             xaxis=dict(range=x_range),
-            yaxis=dict(range=[y_min, y_max] if y_min else None),
+            yaxis=dict(range=[y_min_weight, y_max_weight] if y_min_weight else None),
             # Mobile optimization
             font=dict(size=12),
             margin=dict(l=50, r=20, t=50, b=50)
         )
 
-        st.plotly_chart(fig_height, use_container_width=True)
-
-    # Weight-for-Age Chart
-    with col2:
-        # Automatically switch to CDC if WHO doesn't have weight data for this age
-        chart_weight_source = st.session_state.data_source
-        if st.session_state.data_source == 'WHO' and current_age > 120:
-            chart_weight_source = 'CDC'
-            st.info("ℹ️ Automatically displaying CDC weight chart (WHO weight data only available up to 10 years)")
-
-        # Check if CDC data is available for this age
-        if chart_weight_source == 'CDC' and current_age < 24:
-            st.warning("⚠️ CDC Weight-for-Age Chart Not Available")
-            st.info("CDC data is only available from 2 years (24 months). Please use WHO data source for children under 2 years.")
-        else:
-            # Load appropriate weight data
-            growth_weight_chart = get_weight_data(selected_gender, chart_weight_source)
-            fig_weight = go.Figure()
-
-            # Add percentile lines (in reverse order for legend display)
-            for percentile in ['p97', 'p85', 'p50', 'p15', 'p3']:
-                fig_weight.add_trace(go.Scatter(
-                    x=growth_weight_chart['age_months'],
-                    y=growth_weight_chart[percentile],
-                    mode='lines',
-                    name=names[percentile],
-                    line=dict(color=colors[percentile], width=2 if percentile == 'p50' else 1),
-                    opacity=0.7
-                ))
-
-            # Add historical data points
-            if st.session_state.data_points:
-                df = pd.DataFrame(st.session_state.data_points)
-                fig_weight.add_trace(go.Scatter(
-                    x=df['age'],
-                    y=df['weight'],
-                    mode='markers+lines',
-                    name='Historical Measurements',
-                    marker=dict(size=10, color='blue', symbol='circle'),
-                    line=dict(color='blue', width=2, dash='dash')
-                ))
-
-            # Add today's measurement
-            if st.session_state.today_measurement:
-                today = st.session_state.today_measurement
-                fig_weight.add_trace(go.Scatter(
-                    x=[today['age_months']],
-                    y=[today['weight']],
-                    mode='markers',
-                    name="Today's Measurement",
-                    marker=dict(size=20, color='red', symbol='star', line=dict(color='darkred', width=2))
-                ))
-
-            # Calculate Y-axis range for weight chart
-            visible_weight_data = growth_weight_chart[growth_weight_chart['age_months'].between(x_range[0], x_range[1])]
-            if not visible_weight_data.empty:
-                y_min_weight = visible_weight_data['p3'].min() * 0.90  # Add 10% padding below
-                y_max_weight = visible_weight_data['p97'].max() * 1.05  # Add 5% padding above
-
-                # Also check actual data points and extend y-axis if needed
-                actual_weights = []
-                if st.session_state.data_points:
-                    df = pd.DataFrame(st.session_state.data_points)
-                    actual_weights.extend(df['weight'].tolist())
-                if st.session_state.today_measurement:
-                    actual_weights.append(st.session_state.today_measurement['weight'])
-
-                if actual_weights:
-                    min_weight = min(actual_weights)
-                    max_weight = max(actual_weights)
-                    # Extend y_min if data point is below
-                    if min_weight < y_min_weight:
-                        y_min_weight = min_weight * 0.90
-                    # Extend y_max if data point is above
-                    if max_weight > y_max_weight:
-                        y_max_weight = max_weight * 1.10
-            else:
-                y_min_weight = None
-                y_max_weight = None
-
-            # Determine age range text for title
-            if chart_weight_source == 'CDC':
-                weight_age_range = "2-20 years"
-            else:  # WHO
-                weight_age_range = "0-10 years"  # WHO weight-for-age covers 0-10 years
-
-            fig_weight.update_layout(
-                title=f"Weight-for-Age ({selected_gender}) - {chart_weight_source} - {weight_age_range}",
-                xaxis_title="Age (months)",
-                yaxis_title="Weight (kg)",
-                hovermode='closest',
-                showlegend=True,
-                height=500,
-                xaxis=dict(range=x_range),
-                yaxis=dict(range=[y_min_weight, y_max_weight] if y_min_weight else None),
-                # Mobile optimization
-                font=dict(size=12),
-                margin=dict(l=50, r=20, t=50, b=50)
-            )
-
-            st.plotly_chart(fig_weight, use_container_width=True)
+        st.plotly_chart(fig_weight, use_container_width=True)
 
     # BMI-for-Age Chart
     # WHO: ages 5-19 (61-228 months)
@@ -1075,7 +1302,7 @@ if st.session_state.child_info:
                     y=[today['bmi']],
                     mode='markers',
                     name="Today's Measurement",
-                    marker=dict(size=20, color='red', symbol='star', line=dict(color='darkred', width=2))
+                    marker=dict(size=15, color='orange', symbol='circle', line=dict(color='darkorange', width=2))
                 ))
 
             # Calculate Y-axis range for BMI chart
