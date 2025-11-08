@@ -713,9 +713,17 @@ if st.session_state.child_info:
     st.header("📋 Measurements Table")
 
     # Import/Export section
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    # Store export flag in session state
+    export_csv_clicked = False
 
     with col1:
+        # Export to CSV with Z-scores
+        if st.button("📤 Export CSV", use_container_width=True):
+            export_csv_clicked = True
+
+    with col2:
         # Export to JSON
         if st.button("📤 Export JSON", use_container_width=True):
             export_data = {
@@ -739,7 +747,7 @@ if st.session_state.child_info:
                 mime="application/json"
             )
 
-    with col2:
+    with col3:
         # Export to YAML
         if st.button("📤 Export YAML", use_container_width=True):
             export_data = {
@@ -763,39 +771,104 @@ if st.session_state.child_info:
                 mime="application/x-yaml"
             )
 
-    with col3:
+    with col4:
         # Import from file
-        uploaded_file = st.file_uploader("📥 Import", type=['json', 'yaml', 'yml'], key="import_file")
+        uploaded_file = st.file_uploader("📥 Import", type=['json', 'yaml', 'yml', 'csv'], key="import_file")
         if uploaded_file is not None:
             try:
                 file_content = uploaded_file.read().decode('utf-8')
-                if uploaded_file.name.endswith('.json'):
+
+                if uploaded_file.name.endswith('.csv'):
+                    # Import CSV (only raw data, not z-scores)
+                    import io
+                    df_import = pd.read_csv(io.StringIO(file_content))
+
+                    # Validate required columns
+                    required_cols = ['Date', 'Age (months)', 'Height (cm)', 'Weight (kg)']
+                    if all(col in df_import.columns for col in required_cols):
+                        st.session_state.data_points = []
+                        for _, row in df_import.iterrows():
+                            if pd.notna(row['Date']) and pd.notna(row['Height (cm)']) and pd.notna(row['Weight (kg)']):
+                                measurement_date = pd.to_datetime(row['Date']).date()
+                                age_months = int(row['Age (months)'])
+                                height = float(row['Height (cm)'])
+                                weight = float(row['Weight (kg)'])
+                                bmi = calculate_bmi(height, weight) if height > 0 and weight > 0 else None
+
+                                # Check if marked as today's measurement
+                                is_today = row.get('Today', '') == '🔸'
+
+                                if is_today:
+                                    st.session_state.today_measurement = {
+                                        'date': measurement_date,
+                                        'age_months': age_months,
+                                        'height': height,
+                                        'weight': weight,
+                                        'bmi': bmi,
+                                        'gender': st.session_state.child_info['gender']
+                                    }
+                                else:
+                                    st.session_state.data_points.append({
+                                        'date': measurement_date,
+                                        'gender': st.session_state.child_info['gender'],
+                                        'age': age_months,
+                                        'height': height,
+                                        'weight': weight,
+                                        'bmi': bmi
+                                    })
+                        st.success("✅ CSV data imported successfully!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ CSV must contain columns: {', '.join(required_cols)}")
+
+                elif uploaded_file.name.endswith('.json'):
                     import_data = json.loads(file_content)
+
+                    # Load child info
+                    if 'child_info' in import_data:
+                        st.session_state.child_info = {
+                            'gender': import_data['child_info']['gender'],
+                            'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
+                        }
+
+                    # Load data points
+                    if 'data_points' in import_data:
+                        st.session_state.data_points = []
+                        for point in import_data['data_points']:
+                            point_copy = point.copy()
+                            if 'date' in point_copy:
+                                point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
+                            st.session_state.data_points.append(point_copy)
+
+                    st.success("✅ JSON data imported successfully!")
+                    st.rerun()
+
                 else:  # yaml
                     import_data = yaml.safe_load(file_content)
 
-                # Load child info
-                if 'child_info' in import_data:
-                    st.session_state.child_info = {
-                        'gender': import_data['child_info']['gender'],
-                        'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
-                    }
+                    # Load child info
+                    if 'child_info' in import_data:
+                        st.session_state.child_info = {
+                            'gender': import_data['child_info']['gender'],
+                            'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
+                        }
 
-                # Load data points
-                if 'data_points' in import_data:
-                    st.session_state.data_points = []
-                    for point in import_data['data_points']:
-                        point_copy = point.copy()
-                        if 'date' in point_copy:
-                            point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
-                        st.session_state.data_points.append(point_copy)
+                    # Load data points
+                    if 'data_points' in import_data:
+                        st.session_state.data_points = []
+                        for point in import_data['data_points']:
+                            point_copy = point.copy()
+                            if 'date' in point_copy:
+                                point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
+                            st.session_state.data_points.append(point_copy)
 
-                st.success("✅ Data imported successfully!")
-                st.rerun()
+                    st.success("✅ YAML data imported successfully!")
+                    st.rerun()
+
             except Exception as e:
                 st.error(f"❌ Error importing file: {str(e)}")
 
-    with col4:
+    with col5:
         if st.button("🗑️ Clear All Data", use_container_width=True):
             st.session_state.data_points = []
             st.success("All data cleared!")
@@ -868,6 +941,9 @@ if st.session_state.child_info:
 
         df_table = pd.DataFrame(table_data)
 
+        # Store table in session state for CSV export
+        st.session_state.table_with_zscores = df_table.copy()
+
         # Display editable table
         st.info("💡 Add new measurements by clicking the '+' button at the bottom of the table. Edit existing values directly. Z-scores and percentiles are calculated automatically. BMI is auto-calculated from height and weight.")
 
@@ -892,6 +968,31 @@ if st.session_state.child_info:
             hide_index=True,
             key="measurements_table"
         )
+
+        # Export CSV with all Z-scores (after table is created)
+        if export_csv_clicked and hasattr(st.session_state, 'table_with_zscores'):
+            csv_data = st.session_state.table_with_zscores.to_csv(index=False)
+            st.download_button(
+                label="⬇️ Download CSV with Z-scores",
+                data=csv_data,
+                file_name=f"growth_data_with_zscores_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                type="primary"
+            )
+
+        # Show data as text
+        st.divider()
+        with st.expander("📄 View Data as Text (with Z-scores)"):
+            if hasattr(st.session_state, 'table_with_zscores'):
+                st.text("Copy the text below:")
+                text_data = st.session_state.table_with_zscores.to_string(index=False)
+                st.text_area("Data", text_data, height=300, label_visibility="collapsed")
+
+                # Also show in markdown table format
+                st.markdown("**Markdown Format:**")
+                st.dataframe(st.session_state.table_with_zscores, use_container_width=True)
+
+        st.divider()
 
         # Update session state with edited data
         if st.button("💾 Save Table Changes", use_container_width=False, type="primary"):
