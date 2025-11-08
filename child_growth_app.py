@@ -272,8 +272,8 @@ def get_default_measurements(age_months, gender, data_source='WHO'):
 
     return round(default_height, 1), round(default_weight, 1)
 
-def generate_pdf_report(child_info, today_measurement, data_points, height_fig, weight_fig, bmi_fig=None, data_source='WHO'):
-    """Generate PDF report with Z-scores and charts"""
+def generate_pdf_report(child_info, today_measurement, data_points, height_fig, weight_fig, bmi_fig=None, data_source='WHO', measurements_table=None):
+    """Generate PDF report with Z-scores, measurements table, and charts"""
     buffer = BytesIO()
 
     with PdfPages(buffer) as pdf:
@@ -389,7 +389,64 @@ Weight Analysis:
         pdf.savefig(fig, bbox_inches='tight')
         plt.close()
 
-        # Page 2 & 3: Charts
+        # Page 2: Measurements Table with Z-scores
+        if measurements_table is not None and not measurements_table.empty:
+            fig = plt.figure(figsize=(8.5, 11))
+            fig.suptitle('All Measurements with Z-scores', fontsize=14, fontweight='bold')
+
+            # Remove the 'Today' emoji column for PDF
+            table_for_pdf = measurements_table.copy()
+            if 'Today' in table_for_pdf.columns:
+                table_for_pdf = table_for_pdf.drop('Today', axis=1)
+
+            # Create table
+            ax = fig.add_subplot(111)
+            ax.axis('off')
+
+            # Format the table data
+            table_data = []
+            headers = list(table_for_pdf.columns)
+            table_data.append(headers)
+
+            for _, row in table_for_pdf.iterrows():
+                formatted_row = []
+                for col in headers:
+                    val = row[col]
+                    if pd.isna(val):
+                        formatted_row.append('-')
+                    elif col == 'Date':
+                        formatted_row.append(str(val))
+                    elif col == 'Age (months)':
+                        formatted_row.append(str(int(val)))
+                    elif 'Z-score' in col or 'BMI' == col:
+                        formatted_row.append(f'{val:.2f}' if not pd.isna(val) else '-')
+                    elif '%ile' in col:
+                        formatted_row.append(f'{val:.1f}' if not pd.isna(val) else '-')
+                    else:
+                        formatted_row.append(f'{val:.1f}' if not pd.isna(val) else '-')
+                table_data.append(formatted_row)
+
+            # Create matplotlib table
+            table = ax.table(cellText=table_data[1:], colLabels=table_data[0],
+                           loc='center', cellLoc='center')
+            table.auto_set_font_size(False)
+            table.set_fontsize(7)
+            table.scale(1, 2)
+
+            # Style header
+            for i in range(len(headers)):
+                table[(0, i)].set_facecolor('#4CAF50')
+                table[(0, i)].set_text_props(weight='bold', color='white')
+
+            # Add note
+            note_text = f"Data source: {data_source}\nZ-scores calculated using {data_source} growth standards"
+            plt.text(0.5, 0.02, note_text, fontsize=8, ha='center',
+                    style='italic', transform=fig.transFigure)
+
+            pdf.savefig(fig, bbox_inches='tight')
+            plt.close()
+
+        # Page 3+: Charts
         # Export plotly charts to images
         if height_fig:
             img_bytes = height_fig.to_image(format="png", width=1000, height=700)
@@ -713,43 +770,11 @@ if st.session_state.child_info:
     st.header("📋 Measurements Table")
 
     # Import/Export section
-    col1, col2, col3, col4, col5 = st.columns(5)
-
-    # Store export flag in session state
-    export_csv_clicked = False
+    col1, col2, col3 = st.columns([2, 2, 1])
 
     with col1:
-        # Export to CSV with Z-scores
-        if st.button("📤 Export CSV", use_container_width=True):
-            export_csv_clicked = True
-
-    with col2:
-        # Export to JSON
-        if st.button("📤 Export JSON", use_container_width=True):
-            export_data = {
-                'child_info': {
-                    'gender': st.session_state.child_info['gender'],
-                    'birth_date': st.session_state.child_info['birth_date'].strftime('%Y-%m-%d')
-                },
-                'data_points': []
-            }
-            for point in st.session_state.data_points:
-                export_point = point.copy()
-                if 'date' in export_point:
-                    export_point['date'] = export_point['date'].strftime('%Y-%m-%d')
-                export_data['data_points'].append(export_point)
-
-            json_str = json.dumps(export_data, indent=2)
-            st.download_button(
-                label="Download JSON",
-                data=json_str,
-                file_name=f"growth_data_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.json",
-                mime="application/json"
-            )
-
-    with col3:
         # Export to YAML
-        if st.button("📤 Export YAML", use_container_width=True):
+        if st.button("📤 Export Data (YAML)", use_container_width=True):
             export_data = {
                 'child_info': {
                     'gender': st.session_state.child_info['gender'],
@@ -765,111 +790,45 @@ if st.session_state.child_info:
 
             yaml_str = yaml.dump(export_data, default_flow_style=False, sort_keys=False)
             st.download_button(
-                label="Download YAML",
+                label="⬇️ Download YAML",
                 data=yaml_str,
                 file_name=f"growth_data_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.yaml",
-                mime="application/x-yaml"
+                mime="application/x-yaml",
+                type="primary"
             )
 
-    with col4:
+    with col2:
         # Import from file
-        uploaded_file = st.file_uploader("📥 Import", type=['json', 'yaml', 'yml', 'csv'], key="import_file")
+        uploaded_file = st.file_uploader("📥 Import Data (YAML)", type=['yaml', 'yml'], key="import_file")
         if uploaded_file is not None:
             try:
                 file_content = uploaded_file.read().decode('utf-8')
+                import_data = yaml.safe_load(file_content)
 
-                if uploaded_file.name.endswith('.csv'):
-                    # Import CSV (only raw data, not z-scores)
-                    import io
-                    df_import = pd.read_csv(io.StringIO(file_content))
+                # Load child info
+                if 'child_info' in import_data:
+                    st.session_state.child_info = {
+                        'gender': import_data['child_info']['gender'],
+                        'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
+                    }
 
-                    # Validate required columns
-                    required_cols = ['Date', 'Age (months)', 'Height (cm)', 'Weight (kg)']
-                    if all(col in df_import.columns for col in required_cols):
-                        st.session_state.data_points = []
-                        for _, row in df_import.iterrows():
-                            if pd.notna(row['Date']) and pd.notna(row['Height (cm)']) and pd.notna(row['Weight (kg)']):
-                                measurement_date = pd.to_datetime(row['Date']).date()
-                                age_months = int(row['Age (months)'])
-                                height = float(row['Height (cm)'])
-                                weight = float(row['Weight (kg)'])
-                                bmi = calculate_bmi(height, weight) if height > 0 and weight > 0 else None
+                # Load data points
+                if 'data_points' in import_data:
+                    st.session_state.data_points = []
+                    for point in import_data['data_points']:
+                        point_copy = point.copy()
+                        if 'date' in point_copy:
+                            point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
+                        st.session_state.data_points.append(point_copy)
 
-                                # Check if marked as today's measurement
-                                is_today = row.get('Today', '') == '🔸'
-
-                                if is_today:
-                                    st.session_state.today_measurement = {
-                                        'date': measurement_date,
-                                        'age_months': age_months,
-                                        'height': height,
-                                        'weight': weight,
-                                        'bmi': bmi,
-                                        'gender': st.session_state.child_info['gender']
-                                    }
-                                else:
-                                    st.session_state.data_points.append({
-                                        'date': measurement_date,
-                                        'gender': st.session_state.child_info['gender'],
-                                        'age': age_months,
-                                        'height': height,
-                                        'weight': weight,
-                                        'bmi': bmi
-                                    })
-                        st.success("✅ CSV data imported successfully!")
-                        st.rerun()
-                    else:
-                        st.error(f"❌ CSV must contain columns: {', '.join(required_cols)}")
-
-                elif uploaded_file.name.endswith('.json'):
-                    import_data = json.loads(file_content)
-
-                    # Load child info
-                    if 'child_info' in import_data:
-                        st.session_state.child_info = {
-                            'gender': import_data['child_info']['gender'],
-                            'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
-                        }
-
-                    # Load data points
-                    if 'data_points' in import_data:
-                        st.session_state.data_points = []
-                        for point in import_data['data_points']:
-                            point_copy = point.copy()
-                            if 'date' in point_copy:
-                                point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
-                            st.session_state.data_points.append(point_copy)
-
-                    st.success("✅ JSON data imported successfully!")
-                    st.rerun()
-
-                else:  # yaml
-                    import_data = yaml.safe_load(file_content)
-
-                    # Load child info
-                    if 'child_info' in import_data:
-                        st.session_state.child_info = {
-                            'gender': import_data['child_info']['gender'],
-                            'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
-                        }
-
-                    # Load data points
-                    if 'data_points' in import_data:
-                        st.session_state.data_points = []
-                        for point in import_data['data_points']:
-                            point_copy = point.copy()
-                            if 'date' in point_copy:
-                                point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
-                            st.session_state.data_points.append(point_copy)
-
-                    st.success("✅ YAML data imported successfully!")
-                    st.rerun()
+                st.success("✅ Data imported successfully!")
+                st.rerun()
 
             except Exception as e:
                 st.error(f"❌ Error importing file: {str(e)}")
 
-    with col5:
-        if st.button("🗑️ Clear All Data", use_container_width=True):
+    with col3:
+        if st.button("🗑️ Clear All", use_container_width=True):
             st.session_state.data_points = []
             st.success("All data cleared!")
             st.rerun()
@@ -945,7 +904,7 @@ if st.session_state.child_info:
         st.session_state.table_with_zscores = df_table.copy()
 
         # Display editable table
-        st.info("💡 Add new measurements by clicking the '+' button at the bottom of the table. Edit existing values directly. Z-scores and percentiles are calculated automatically. BMI is auto-calculated from height and weight.")
+        st.info("💡 Add new measurements by clicking the '+' button. Edit values directly (Date, Age, Height, Weight). When you save, BMI and all Z-scores will be automatically recalculated.")
 
         edited_df = st.data_editor(
             df_table,
@@ -969,30 +928,11 @@ if st.session_state.child_info:
             key="measurements_table"
         )
 
-        # Export CSV with all Z-scores (after table is created)
-        if export_csv_clicked and hasattr(st.session_state, 'table_with_zscores'):
-            csv_data = st.session_state.table_with_zscores.to_csv(index=False)
-            st.download_button(
-                label="⬇️ Download CSV with Z-scores",
-                data=csv_data,
-                file_name=f"growth_data_with_zscores_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                type="primary"
-            )
-
-        # Show data as text
-        st.divider()
-        with st.expander("📄 View Data as Text (with Z-scores)"):
+        # Show data as text for copying
+        with st.expander("📄 View/Copy Table Data (with Z-scores)"):
             if hasattr(st.session_state, 'table_with_zscores'):
-                st.text("Copy the text below:")
                 text_data = st.session_state.table_with_zscores.to_string(index=False)
-                st.text_area("Data", text_data, height=300, label_visibility="collapsed")
-
-                # Also show in markdown table format
-                st.markdown("**Markdown Format:**")
-                st.dataframe(st.session_state.table_with_zscores, use_container_width=True)
-
-        st.divider()
+                st.text_area("Copy table data:", text_data, height=250, label_visibility="collapsed")
 
         # Update session state with edited data
         if st.button("💾 Save Table Changes", use_container_width=False, type="primary"):
@@ -1426,6 +1366,9 @@ if st.session_state.child_info:
 
     # Generate PDF data
     try:
+        # Get measurements table with Z-scores if available
+        measurements_table = st.session_state.get('table_with_zscores', None)
+
         pdf_buffer = generate_pdf_report(
             st.session_state.child_info,
             st.session_state.today_measurement,
@@ -1433,7 +1376,8 @@ if st.session_state.child_info:
             fig_height,
             fig_weight,
             fig_bmi,
-            st.session_state.data_source
+            st.session_state.data_source,
+            measurements_table
         )
 
         # Prepare filename
