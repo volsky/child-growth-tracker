@@ -582,62 +582,7 @@ with st.sidebar:
 
     st.divider()
 
-    # Historical Measurements Section
-    st.header("📊 Historical Data")
-
-    if st.session_state.child_info:
-        hist_date = st.date_input("Measurement Date",
-                                   value=date.today().replace(year=date.today().year - 1),
-                                   min_value=st.session_state.child_info['birth_date'],
-                                   max_value=date.today(),
-                                   key="hist_date")
-
-        hist_age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], hist_date)
-        st.info(f"Age: {hist_age_months} months")
-
-        # Get 50th percentile defaults for this age and gender
-        hist_default_height, hist_default_weight = get_default_measurements(hist_age_months, st.session_state.child_info['gender'], st.session_state.data_source)
-
-        # Use age_months in key to reset defaults when date changes
-        hist_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=hist_default_height, step=0.1, key=f"hist_height_{hist_age_months}")
-        hist_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=hist_default_weight, step=0.1, key=f"hist_weight_{hist_age_months}")
-
-        # Calculate and display BMI automatically for historical data
-        if hist_height > 0 and hist_weight > 0:
-            hist_bmi = calculate_bmi(hist_height, hist_weight)
-            st.info(f"💡 Calculated BMI: {hist_bmi:.2f} kg/m²")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Add Point", use_container_width=True):
-                hist_bmi = calculate_bmi(hist_height, hist_weight) if hist_height > 0 and hist_weight > 0 else None
-                st.session_state.data_points.append({
-                    'date': hist_date,
-                    'gender': st.session_state.child_info['gender'],
-                    'age': hist_age_months,
-                    'height': hist_height,
-                    'weight': hist_weight,
-                    'bmi': hist_bmi
-                })
-                st.success("Point added!")
-
-        with col2:
-            if st.button("Clear All", use_container_width=True):
-                st.session_state.data_points = []
-                st.rerun()
-
-        # Show current data points
-        if st.session_state.data_points:
-            st.subheader(f"Historical ({len(st.session_state.data_points)})")
-            df_display = pd.DataFrame(st.session_state.data_points)
-            df_display['date'] = pd.to_datetime(df_display['date']).dt.strftime('%Y-%m-%d')
-            # Show BMI column if it exists and has values
-            columns_to_show = ['date', 'age', 'height', 'weight']
-            if 'bmi' in df_display.columns and df_display['bmi'].notna().any():
-                columns_to_show.append('bmi')
-            st.dataframe(df_display[columns_to_show], use_container_width=True)
-    else:
-        st.warning("Please save child info first")
+    st.info("💡 Tip: Add historical measurements directly in the editable table below (main content area)")
 
 # Main content - Today's Measurement Z-scores
 if st.session_state.today_measurement:
@@ -924,7 +869,7 @@ if st.session_state.child_info:
         df_table = pd.DataFrame(table_data)
 
         # Display editable table
-        st.info("💡 Table shows all measurements with calculated Z-scores and percentiles. Edit values directly in the table.")
+        st.info("💡 Add new measurements by clicking the '+' button at the bottom of the table. Edit existing values directly. Z-scores and percentiles are calculated automatically. BMI is auto-calculated from height and weight.")
 
         edited_df = st.data_editor(
             df_table,
@@ -990,7 +935,7 @@ if st.session_state.child_info:
             except Exception as e:
                 st.error(f"❌ Error saving changes: {str(e)}")
     else:
-        st.info("👆 Add measurements using the sidebar form or import from a file to see the data table.")
+        st.info("📝 No measurements yet. Add your first measurement using 'Today's Measurement' in the sidebar, or import data from a file. Then add more measurements directly in this table.")
 
     st.divider()
 
