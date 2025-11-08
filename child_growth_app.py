@@ -904,7 +904,7 @@ if st.session_state.child_info:
         st.session_state.table_with_zscores = df_table.copy()
 
         # Display editable table
-        st.info("💡 Add new measurements by clicking the '+' button. Edit values directly (Date, Age, Height, Weight). When you save, BMI and all Z-scores will be automatically recalculated.")
+        st.info("💡 Add new measurements by clicking the '+' button. Edit Date, Age, Height, Weight only. BMI and Z-scores (grayed out) are auto-calculated when you save.")
 
         edited_df = st.data_editor(
             df_table,
@@ -914,15 +914,15 @@ if st.session_state.child_info:
                 "Date": st.column_config.TextColumn("Date", width="small"),
                 "Age (months)": st.column_config.NumberColumn("Age (months)", width="small"),
                 "Height (cm)": st.column_config.NumberColumn("Height (cm)", width="small", format="%.1f"),
-                "Height Z-score": st.column_config.NumberColumn("Height Z", width="small", format="%.2f"),
-                "Height %ile": st.column_config.NumberColumn("Height %", width="small", format="%.1f"),
+                "Height Z-score": st.column_config.NumberColumn("Height Z", width="small", format="%.2f", disabled=True),
+                "Height %ile": st.column_config.NumberColumn("Height %", width="small", format="%.1f", disabled=True),
                 "Weight (kg)": st.column_config.NumberColumn("Weight (kg)", width="small", format="%.1f"),
-                "Weight Z-score": st.column_config.NumberColumn("Weight Z", width="small", format="%.2f"),
-                "Weight %ile": st.column_config.NumberColumn("Weight %", width="small", format="%.1f"),
-                "BMI": st.column_config.NumberColumn("BMI", width="small", format="%.2f"),
-                "BMI Z-score": st.column_config.NumberColumn("BMI Z", width="small", format="%.2f"),
-                "BMI %ile": st.column_config.NumberColumn("BMI %", width="small", format="%.1f"),
-                "Today": st.column_config.TextColumn("📍", width="small")
+                "Weight Z-score": st.column_config.NumberColumn("Weight Z", width="small", format="%.2f", disabled=True),
+                "Weight %ile": st.column_config.NumberColumn("Weight %", width="small", format="%.1f", disabled=True),
+                "BMI": st.column_config.NumberColumn("BMI", width="small", format="%.2f", disabled=True),
+                "BMI Z-score": st.column_config.NumberColumn("BMI Z", width="small", format="%.2f", disabled=True),
+                "BMI %ile": st.column_config.NumberColumn("BMI %", width="small", format="%.1f", disabled=True),
+                "Today": st.column_config.TextColumn("📍", width="small", disabled=True)
             },
             hide_index=True,
             key="measurements_table"
