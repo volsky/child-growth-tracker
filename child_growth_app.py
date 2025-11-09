@@ -585,39 +585,53 @@ if st.session_state.child_info:
     col1, col2, col3, col4 = st.columns([2, 2, 2, 1.5])
 
     with col1:
-        today_date = st.date_input("Measurement Date",
-                                    value=date.today(),
-                                    min_value=st.session_state.child_info['birth_date'],
-                                    max_value=date.today(),
-                                    key="today_date")
+        measurement_date = st.date_input("Date",
+                                        value=date.today(),
+                                        max_value=date.today(),
+                                        key="measurement_date")
 
-    age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], today_date)
-
-    # Get 50th percentile defaults for this age and gender
+    # Calculate age and get default values for height and weight
+    age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], measurement_date)
     default_height, default_weight = get_default_measurements(age_months, st.session_state.child_info['gender'], st.session_state.data_source)
 
     with col2:
-        # Use age_months in key to reset defaults when date changes
-        today_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=default_height, step=0.1, key=f"today_height_{age_months}")
+        measurement_height = st.number_input("Height (cm)",
+                                            min_value=0.0,
+                                            max_value=250.0,
+                                            value=default_height,
+                                            step=0.1,
+                                            key="measurement_height")
 
     with col3:
-        today_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=default_weight, step=0.1, key=f"today_weight_{age_months}")
+        measurement_weight = st.number_input("Weight (kg)",
+                                            min_value=0.0,
+                                            max_value=200.0,
+                                            value=default_weight,
+                                            step=0.1,
+                                            key="measurement_weight")
 
     with col4:
         st.markdown("&nbsp;")  # Spacer to align button
         st.markdown("&nbsp;")  # Spacer to align button
         if st.button("➕ Add", use_container_width=True, type="primary"):
-            today_bmi = calculate_bmi(today_height, today_weight) if today_height > 0 and today_weight > 0 else None
+            # Calculate BMI
+            bmi = calculate_bmi(measurement_height, measurement_weight)
+
+            # Save today's measurement
             st.session_state.today_measurement = {
-                'date': today_date,
+                'date': measurement_date,
                 'age_months': age_months,
-                'height': today_height,
-                'weight': today_weight,
-                'bmi': today_bmi,
+                'height': measurement_height,
+                'weight': measurement_weight,
+                'bmi': bmi,
                 'gender': st.session_state.child_info['gender']
             }
-            st.success("Today's measurement saved!")
+
+            st.success("Measurement added!")
             st.rerun()
+
+    # Display current age info
+    st.info(f"Age at measurement: {age_months} months ({age_months // 12} years, {age_months % 12} months)")
 else:
     st.warning("Please save child info first")
 
