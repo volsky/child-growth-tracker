@@ -621,6 +621,51 @@ if st.session_state.child_info:
 else:
     st.warning("Please save child info first")
 
+st.divider()
+
+# Import Data Section - Available anytime
+st.header("📥 Import Data")
+uploaded_file = st.file_uploader("Import growth data from file", type=['txt'], key="import_file_early")
+if uploaded_file is not None:
+    # Use file ID to prevent re-processing the same file
+    file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+
+    # Check if this file has already been processed
+    if 'last_imported_file' not in st.session_state or st.session_state.last_imported_file != file_id:
+        try:
+            file_content = uploaded_file.read().decode('utf-8')
+            import_data = yaml.safe_load(file_content)
+
+            # Load child info
+            if 'child_info' in import_data:
+                st.session_state.child_info = {
+                    'gender': import_data['child_info']['gender'],
+                    'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
+                }
+
+            # Load data points
+            if 'data_points' in import_data:
+                st.session_state.data_points = []
+                for point in import_data['data_points']:
+                    point_copy = point.copy()
+                    if 'date' in point_copy:
+                        point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
+                    st.session_state.data_points.append(point_copy)
+
+            # Clear today's measurement when importing
+            st.session_state.today_measurement = None
+
+            # Mark this file as processed
+            st.session_state.last_imported_file = file_id
+
+            st.success("✅ Data imported successfully! Child info and historical measurements loaded.")
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"❌ Error importing file: {str(e)}")
+
+st.divider()
+
 # Main content - Today's Measurement SDS
 if st.session_state.today_measurement:
     st.header("📈 Today's Measurement Analysis")
@@ -771,16 +816,16 @@ if st.session_state.child_info:
 
         yaml_str = yaml.dump(export_data, default_flow_style=False, sort_keys=False)
         st.download_button(
-            label="📤 Download YAML",
+            label="📤 Download Data",
             data=yaml_str,
-            file_name=f"growth_data_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.yaml",
-            mime="application/x-yaml",
+            file_name=f"growth_data_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.txt",
+            mime="text/plain",
             use_container_width=True
         )
 
     with col2:
         # Import from file
-        uploaded_file = st.file_uploader("📥 Import Data (YAML)", type=['yaml', 'yml'], key="import_file")
+        uploaded_file = st.file_uploader("📥 Import Data", type=['txt'], key="import_file")
         if uploaded_file is not None:
             # Use file ID to prevent re-processing the same file
             file_id = f"{uploaded_file.name}_{uploaded_file.size}"
@@ -807,12 +852,8 @@ if st.session_state.child_info:
                                 point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
                             st.session_state.data_points.append(point_copy)
 
-                    # Load today's measurement
-                    if 'today_measurement' in import_data and import_data['today_measurement'] is not None:
-                        today_copy = import_data['today_measurement'].copy()
-                        if 'date' in today_copy:
-                            today_copy['date'] = datetime.strptime(today_copy['date'], '%Y-%m-%d').date()
-                        st.session_state.today_measurement = today_copy
+                    # Clear today's measurement when importing
+                    st.session_state.today_measurement = None
 
                     # Mark this file as processed
                     st.session_state.last_imported_file = file_id
