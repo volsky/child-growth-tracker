@@ -652,8 +652,29 @@ if uploaded_file is not None:
                         point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
                     st.session_state.data_points.append(point_copy)
 
-            # Clear today's measurement when importing
-            st.session_state.today_measurement = None
+            # Handle today's measurement based on date
+            if 'today_measurement' in import_data and import_data['today_measurement'] is not None:
+                today_copy = import_data['today_measurement'].copy()
+                if 'date' in today_copy:
+                    today_copy['date'] = datetime.strptime(today_copy['date'], '%Y-%m-%d').date()
+
+                    # Check if the saved "today's measurement" is from a previous date
+                    if today_copy['date'] < date.today():
+                        # Add it to historical data points
+                        st.session_state.data_points.append({
+                            'date': today_copy['date'],
+                            'gender': today_copy['gender'],
+                            'age': today_copy['age_months'],
+                            'height': today_copy['height'],
+                            'weight': today_copy['weight'],
+                            'bmi': today_copy.get('bmi')
+                        })
+                        st.session_state.today_measurement = None
+                    else:
+                        # Keep it as today's measurement if it's from today
+                        st.session_state.today_measurement = today_copy
+            else:
+                st.session_state.today_measurement = None
 
             # Mark this file as processed
             st.session_state.last_imported_file = file_id
@@ -852,8 +873,29 @@ if st.session_state.child_info:
                                 point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
                             st.session_state.data_points.append(point_copy)
 
-                    # Clear today's measurement when importing
-                    st.session_state.today_measurement = None
+                    # Handle today's measurement based on date
+                    if 'today_measurement' in import_data and import_data['today_measurement'] is not None:
+                        today_copy = import_data['today_measurement'].copy()
+                        if 'date' in today_copy:
+                            today_copy['date'] = datetime.strptime(today_copy['date'], '%Y-%m-%d').date()
+
+                            # Check if the saved "today's measurement" is from a previous date
+                            if today_copy['date'] < date.today():
+                                # Add it to historical data points
+                                st.session_state.data_points.append({
+                                    'date': today_copy['date'],
+                                    'gender': today_copy['gender'],
+                                    'age': today_copy['age_months'],
+                                    'height': today_copy['height'],
+                                    'weight': today_copy['weight'],
+                                    'bmi': today_copy.get('bmi')
+                                })
+                                st.session_state.today_measurement = None
+                            else:
+                                # Keep it as today's measurement if it's from today
+                                st.session_state.today_measurement = today_copy
+                    else:
+                        st.session_state.today_measurement = None
 
                     # Mark this file as processed
                     st.session_state.last_imported_file = file_id
