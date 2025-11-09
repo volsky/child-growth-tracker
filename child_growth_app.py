@@ -99,7 +99,7 @@ def get_bmi_data(gender, data_source='WHO'):
 
 def get_growth_statistics(gender, data_source='WHO'):
     """
-    Returns growth statistics (mean and SD) for Z-score calculation
+    Returns growth statistics (mean and SD) for SDS calculation
     This includes height, weight, and BMI statistics loaded from CSV
     """
     # Load height, weight, and BMI data
@@ -147,7 +147,7 @@ def get_growth_statistics(gender, data_source='WHO'):
 
 def calculate_z_score(age_months, measurement, measurement_type, gender, data_source='WHO'):
     """
-    Calculate Z-score for a given measurement
+    Calculate SDS for a given measurement
     measurement_type: 'height', 'weight', or 'bmi'
     data_source: 'WHO' or 'CDC'
     """
@@ -194,7 +194,7 @@ def calculate_z_score(age_months, measurement, measurement_type, gender, data_so
 
 def interpret_z_score(z_score, measurement_type):
     """
-    Provide interpretation of Z-score based on WHO guidelines
+    Provide interpretation of SDS based on WHO guidelines
     """
     if measurement_type == 'height':
         if z_score < -3:
@@ -273,11 +273,11 @@ def get_default_measurements(age_months, gender, data_source='WHO'):
     return round(default_height, 1), round(default_weight, 1)
 
 def generate_pdf_report(child_info, today_measurement, data_points, height_fig, weight_fig, bmi_fig=None, data_source='WHO', measurements_table=None):
-    """Generate PDF report with Z-scores, measurements table, and charts"""
+    """Generate PDF report with SDS, measurements table, and charts"""
     buffer = BytesIO()
 
     with PdfPages(buffer) as pdf:
-        # Page 1: Summary and Z-scores
+        # Page 1: Summary and SDS
         fig = plt.figure(figsize=(8.5, 11))
         fig.suptitle('Child Growth Report', fontsize=16, fontweight='bold')
 
@@ -292,7 +292,7 @@ Birth Date: {child_info['birth_date'].strftime('%Y-%m-%d')}
                 fontfamily='monospace', transform=fig.transFigure)
 
         if today_measurement:
-            # Calculate Z-scores
+            # Calculate SDS
             height_z, height_perc, height_mean, height_sd = calculate_z_score(
                 today_measurement['age_months'], today_measurement['height'], 'height', today_measurement['gender'], data_source
             )
@@ -304,27 +304,27 @@ Birth Date: {child_info['birth_date'].strftime('%Y-%m-%d')}
             height_text = f"  Measurement: {today_measurement['height']:.1f} cm\n"
             if height_z is not None:
                 height_interp, _ = interpret_z_score(height_z, 'height')
-                height_text += f"""  Z-score: {height_z:.2f}
+                height_text += f"""  SDS: {height_z:.2f}
   Percentile: {height_perc:.1f}%
   Interpretation: {height_interp}
   Expected mean: {height_mean:.1f} cm
   Standard deviation: {height_sd:.2f} cm"""
             else:
-                height_text += "  Z-score: Not available for this age/source"
+                height_text += "  SDS: Not available for this age/source"
 
             # Build weight analysis text
             weight_text = f"  Measurement: {today_measurement['weight']:.1f} kg\n"
             if weight_z is not None:
                 weight_interp, _ = interpret_z_score(weight_z, 'weight')
-                weight_text += f"""  Z-score: {weight_z:.2f}
+                weight_text += f"""  SDS: {weight_z:.2f}
   Percentile: {weight_perc:.1f}%
   Interpretation: {weight_interp}
   Expected mean: {weight_mean:.1f} kg
   Standard deviation: {weight_sd:.2f} kg"""
             else:
-                weight_text += "  Z-score: Not available for this age/source"
+                weight_text += "  SDS: Not available for this age/source"
 
-            # Check if BMI data is available and calculate BMI Z-score
+            # Check if BMI data is available and calculate BMI SDS
             bmi_text = ""
             if 'bmi' in today_measurement and today_measurement['bmi'] is not None:
                 bmi_available = False
@@ -342,7 +342,7 @@ Birth Date: {child_info['birth_date'].strftime('%Y-%m-%d')}
                         bmi_text = f"""
 BMI Analysis:
   Measurement: {today_measurement['bmi']:.2f} kg/m²
-  Z-score: {bmi_z:.2f}
+  SDS: {bmi_z:.2f}
   Percentile: {bmi_perc:.1f}%
   Interpretation: {bmi_interp}
   Expected mean: {bmi_mean:.2f} kg/m²
@@ -389,10 +389,10 @@ Weight Analysis:
         pdf.savefig(fig, bbox_inches='tight')
         plt.close()
 
-        # Page 2: Measurements Table with Z-scores
+        # Page 2: Measurements Table with SDS
         if measurements_table is not None and not measurements_table.empty:
             fig = plt.figure(figsize=(8.5, 11))
-            fig.suptitle('All Measurements with Z-scores', fontsize=14, fontweight='bold')
+            fig.suptitle('All Measurements with SDS', fontsize=14, fontweight='bold')
 
             # Remove the 'Today' emoji column for PDF
             table_for_pdf = measurements_table.copy()
@@ -418,7 +418,7 @@ Weight Analysis:
                         formatted_row.append(str(val))
                     elif col == 'Age (months)':
                         formatted_row.append(str(int(val)))
-                    elif 'Z-score' in col or 'BMI' == col:
+                    elif 'SDS' in col or 'BMI' == col:
                         formatted_row.append(f'{val:.2f}' if not pd.isna(val) else '-')
                     elif '%ile' in col:
                         formatted_row.append(f'{val:.1f}' if not pd.isna(val) else '-')
@@ -439,7 +439,7 @@ Weight Analysis:
                 table[(0, i)].set_text_props(weight='bold', color='white')
 
             # Add note
-            note_text = f"Data source: {data_source}\nZ-scores calculated using {data_source} growth standards"
+            note_text = f"Data source: {data_source}\nSDS calculated using {data_source} growth standards"
             plt.text(0.5, 0.02, note_text, fontsize=8, ha='center',
                     style='italic', transform=fig.transFigure)
 
@@ -512,7 +512,7 @@ if 'data_source' not in st.session_state:
 # Main content - Child Information and Data Entry
 st.header("👤 Child Information")
 
-col1, col2, col3 = st.columns([2, 2, 2])
+col1, col2, col3, col4 = st.columns([2, 2, 2, 1.5])
 
 with col1:
     child_gender = st.selectbox("Gender", ["Male", "Female"], key="child_gender")
@@ -565,9 +565,10 @@ with col3:
         )
         st.session_state.data_source = data_source
 
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("💾 Save Child Info", use_container_width=True, type="primary"):
+with col4:
+    st.markdown("&nbsp;")  # Spacer to align button
+    st.markdown("&nbsp;")  # Spacer to align button
+    if st.button("💾 Save", use_container_width=True, type="primary"):
         st.session_state.child_info = {
             'gender': child_gender,
             'birth_date': child_birth_date
@@ -575,16 +576,13 @@ with col1:
         st.success("Child info saved!")
         st.rerun()
 
-with col2:
-    pass  # Data source info removed
-
 st.divider()
 
 # Today's Measurement Section
 st.header("📅 Today's Measurement")
 
 if st.session_state.child_info:
-    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 1.5])
 
     with col1:
         today_date = st.date_input("Measurement Date",
@@ -606,9 +604,9 @@ if st.session_state.child_info:
         today_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=default_weight, step=0.1, key=f"today_weight_{age_months}")
 
     with col4:
-        st.markdown("&nbsp;")  # Spacer
-        st.markdown("&nbsp;")  # Spacer
-        if st.button("➕ Add Measurement", use_container_width=True, type="primary"):
+        st.markdown("&nbsp;")  # Spacer to align button
+        st.markdown("&nbsp;")  # Spacer to align button
+        if st.button("➕ Add", use_container_width=True, type="primary"):
             today_bmi = calculate_bmi(today_height, today_weight) if today_height > 0 and today_weight > 0 else None
             st.session_state.today_measurement = {
                 'date': today_date,
@@ -623,7 +621,7 @@ if st.session_state.child_info:
 else:
     st.warning("Please save child info first")
 
-# Main content - Today's Measurement Z-scores
+# Main content - Today's Measurement SDS
 if st.session_state.today_measurement:
     st.header("📈 Today's Measurement Analysis")
 
@@ -640,7 +638,7 @@ if st.session_state.today_measurement:
 
         if height_z is not None:
             height_interp, height_status = interpret_z_score(height_z, 'height')
-            st.metric("Z-score", f"{height_z:.2f}")
+            st.metric("SDS", f"{height_z:.2f}")
             st.metric("Percentile", f"{height_perc:.1f}%")
 
             if height_status == "success":
@@ -655,7 +653,7 @@ if st.session_state.today_measurement:
                 st.write(f"**Standard deviation:** {height_sd:.2f} cm")
                 st.write(f"**Age:** {today['age_months']} months")
         else:
-            st.warning("⚠️ Z-score not available")
+            st.warning("⚠️ SDS not available")
             st.info(f"Height data not available for {today['age_months']} months in {st.session_state.data_source} database")
 
     with col2:
@@ -680,7 +678,7 @@ if st.session_state.today_measurement:
 
             if weight_z is not None:
                 weight_interp, weight_status = interpret_z_score(weight_z, 'weight')
-                st.metric("Z-score", f"{weight_z:.2f}")
+                st.metric("SDS", f"{weight_z:.2f}")
                 st.metric("Percentile", f"{weight_perc:.1f}%")
 
                 if weight_status == "success":
@@ -695,7 +693,7 @@ if st.session_state.today_measurement:
                     st.write(f"**Standard deviation:** {weight_sd:.2f} kg")
                     st.write(f"**Age:** {today['age_months']} months")
             else:
-                st.warning("⚠️ Z-score not available")
+                st.warning("⚠️ SDS not available")
                 st.info(f"Weight data not available for {today['age_months']} months in {weight_data_source} database")
 
     with col3:
@@ -720,7 +718,7 @@ if st.session_state.today_measurement:
                     bmi_interp, bmi_status = interpret_z_score(bmi_z, 'bmi')
 
                     st.metric("BMI", f"{today['bmi']:.2f} kg/m²")
-                    st.metric("Z-score", f"{bmi_z:.2f}")
+                    st.metric("SDS", f"{bmi_z:.2f}")
                     st.metric("Percentile", f"{bmi_perc:.1f}%")
 
                     if bmi_status == "success":
@@ -739,7 +737,7 @@ if st.session_state.today_measurement:
 
     st.divider()
 
-# Editable Measurements Table with Z-scores
+# Editable Measurements Table with SDS
 if st.session_state.child_info:
     st.header("📋 Measurements Table")
 
@@ -878,11 +876,11 @@ if st.session_state.child_info:
                 'Weight (kg)': round(measurement['weight'], 1),
                 'Age (months)': age_months,
                 'BMI': round(measurement['bmi'], 2) if 'bmi' in measurement and measurement['bmi'] is not None else None,
-                'Height Z-score': round(height_z, 2) if height_z is not None else None,
+                'Height SDS': round(height_z, 2) if height_z is not None else None,
                 'Height %ile': round(height_perc, 1) if height_perc is not None else None,
-                'Weight Z-score': round(weight_z, 2) if weight_z is not None else None,
+                'Weight SDS': round(weight_z, 2) if weight_z is not None else None,
                 'Weight %ile': round(weight_perc, 1) if weight_perc is not None else None,
-                'BMI Z-score': round(bmi_z, 2) if bmi_z is not None else None,
+                'BMI SDS': round(bmi_z, 2) if bmi_z is not None else None,
                 'BMI %ile': round(bmi_perc, 1) if bmi_perc is not None else None,
                 'Today': '🔸' if measurement.get('is_today', False) else ''
             }
@@ -897,18 +895,18 @@ if st.session_state.child_info:
             df_table,
             use_container_width=True,
             num_rows="dynamic",
-            disabled=["Age (months)", "Height Z-score", "Height %ile", "Weight Z-score", "Weight %ile", "BMI", "BMI Z-score", "BMI %ile", "Today"],
+            disabled=["Age (months)", "Height SDS", "Height %ile", "Weight SDS", "Weight %ile", "BMI", "BMI SDS", "BMI %ile", "Today"],
             column_config={
                 "Date": st.column_config.TextColumn("Date", width="small"),
                 "Age (months)": st.column_config.NumberColumn("Age (months)", width="small"),
                 "Height (cm)": st.column_config.NumberColumn("Height (cm)", width="small", format="%.1f"),
-                "Height Z-score": st.column_config.NumberColumn("Height Z", width="small", format="%.2f"),
+                "Height SDS": st.column_config.NumberColumn("Height SDS", width="small", format="%.2f"),
                 "Height %ile": st.column_config.NumberColumn("Height %", width="small", format="%.1f"),
                 "Weight (kg)": st.column_config.NumberColumn("Weight (kg)", width="small", format="%.1f"),
-                "Weight Z-score": st.column_config.NumberColumn("Weight Z", width="small", format="%.2f"),
+                "Weight SDS": st.column_config.NumberColumn("Weight SDS", width="small", format="%.2f"),
                 "Weight %ile": st.column_config.NumberColumn("Weight %", width="small", format="%.1f"),
                 "BMI": st.column_config.NumberColumn("BMI", width="small", format="%.2f"),
-                "BMI Z-score": st.column_config.NumberColumn("BMI Z", width="small", format="%.2f"),
+                "BMI SDS": st.column_config.NumberColumn("BMI SDS", width="small", format="%.2f"),
                 "BMI %ile": st.column_config.NumberColumn("BMI %", width="small", format="%.1f"),
                 "Today": st.column_config.TextColumn("📍", width="small")
             },
@@ -1345,7 +1343,7 @@ if st.session_state.child_info:
 
     # Generate PDF data
     try:
-        # Get measurements table with Z-scores if available
+        # Get measurements table with SDS if available
         measurements_table = st.session_state.get('table_with_zscores', None)
 
         pdf_buffer = generate_pdf_report(
