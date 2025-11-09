@@ -920,26 +920,40 @@ if st.session_state.child_info:
         # Store table in session state for CSV export
         st.session_state.table_with_zscores = df_table.copy()
 
+        # Debug info - show if Z-scores are being calculated
+        if not df_table.empty:
+            has_height_z = df_table['Height Z-score'].notna().any()
+            has_weight_z = df_table['Weight Z-score'].notna().any()
+            has_bmi_z = df_table['BMI Z-score'].notna().any()
+            if has_height_z or has_weight_z or has_bmi_z:
+                st.success(f"✅ Z-scores calculated: Height={has_height_z}, Weight={has_weight_z}, BMI={has_bmi_z}")
+            else:
+                st.warning("⚠️ No Z-scores calculated - check that Age and measurements are valid for the selected data source")
+
         # Display editable table
-        st.info("💡 Add new measurements by clicking the '+' button. Edit Date, Age, Height, Weight only. BMI and Z-scores (grayed out) are auto-calculated when you save.")
+        st.info("💡 Enter: Date, Height, Weight. Auto-calculated on save: Age (from date), BMI, and all Z-scores. Calculated columns are grayed out.")
+
+        # Show current values before editor for debugging
+        st.write("Table sample (first row):", df_table.iloc[0].to_dict() if not df_table.empty else "No data")
 
         edited_df = st.data_editor(
             df_table,
             use_container_width=True,
             num_rows="dynamic",
+            disabled=["Age (months)", "Height Z-score", "Height %ile", "Weight Z-score", "Weight %ile", "BMI", "BMI Z-score", "BMI %ile", "Today"],
             column_config={
                 "Date": st.column_config.TextColumn("Date", width="small"),
                 "Age (months)": st.column_config.NumberColumn("Age (months)", width="small"),
                 "Height (cm)": st.column_config.NumberColumn("Height (cm)", width="small", format="%.1f"),
-                "Height Z-score": st.column_config.NumberColumn("Height Z", width="small", format="%.2f", disabled=True),
-                "Height %ile": st.column_config.NumberColumn("Height %", width="small", format="%.1f", disabled=True),
+                "Height Z-score": st.column_config.NumberColumn("Height Z", width="small", format="%.2f"),
+                "Height %ile": st.column_config.NumberColumn("Height %", width="small", format="%.1f"),
                 "Weight (kg)": st.column_config.NumberColumn("Weight (kg)", width="small", format="%.1f"),
-                "Weight Z-score": st.column_config.NumberColumn("Weight Z", width="small", format="%.2f", disabled=True),
-                "Weight %ile": st.column_config.NumberColumn("Weight %", width="small", format="%.1f", disabled=True),
-                "BMI": st.column_config.NumberColumn("BMI", width="small", format="%.2f", disabled=True),
-                "BMI Z-score": st.column_config.NumberColumn("BMI Z", width="small", format="%.2f", disabled=True),
-                "BMI %ile": st.column_config.NumberColumn("BMI %", width="small", format="%.1f", disabled=True),
-                "Today": st.column_config.TextColumn("📍", width="small", disabled=True)
+                "Weight Z-score": st.column_config.NumberColumn("Weight Z", width="small", format="%.2f"),
+                "Weight %ile": st.column_config.NumberColumn("Weight %", width="small", format="%.1f"),
+                "BMI": st.column_config.NumberColumn("BMI", width="small", format="%.2f"),
+                "BMI Z-score": st.column_config.NumberColumn("BMI Z", width="small", format="%.2f"),
+                "BMI %ile": st.column_config.NumberColumn("BMI %", width="small", format="%.1f"),
+                "Today": st.column_config.TextColumn("📍", width="small")
             },
             hide_index=True,
             key="measurements_table"
@@ -961,7 +975,10 @@ if st.session_state.child_info:
                 for idx, row in edited_df.iterrows():
                     if pd.notna(row['Date']) and pd.notna(row['Height (cm)']) and pd.notna(row['Weight (kg)']):
                         measurement_date = datetime.strptime(row['Date'], '%Y-%m-%d').date()
-                        age_months = int(row['Age (months)'])
+
+                        # Calculate age from birth_date and measurement_date
+                        age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], measurement_date)
+
                         height = float(row['Height (cm)'])
                         weight = float(row['Weight (kg)'])
                         bmi = calculate_bmi(height, weight) if height > 0 and weight > 0 else None
