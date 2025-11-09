@@ -509,32 +509,24 @@ if 'today_measurement' not in st.session_state:
 if 'data_source' not in st.session_state:
     st.session_state.data_source = 'WHO'
 
-# Sidebar for Child Information
-with st.sidebar:
-    st.header("👤 Child Information")
+# Main content - Child Information and Data Entry
+st.header("👤 Child Information")
 
+col1, col2, col3 = st.columns([2, 2, 2])
+
+with col1:
     child_gender = st.selectbox("Gender", ["Male", "Female"], key="child_gender")
+
+with col2:
     child_birth_date = st.date_input("Birth Date",
                                       value=date.today().replace(year=date.today().year - 2),
                                       min_value=date.today().replace(year=date.today().year - 20),
                                       max_value=date.today(),
                                       key="birth_date")
 
-    if st.button("Save Child Info", use_container_width=True):
-        st.session_state.child_info = {
-            'gender': child_gender,
-            'birth_date': child_birth_date
-        }
-        st.success("Child info saved!")
-
-    st.divider()
-
-    # Data Source Selection - moved below child info
-    st.header("⚙️ Data Source")
-
+with col3:
     # Calculate recommended data source based on child's age
     recommended_source = "WHO"  # Default
-    recommendation_reason = ""
     force_cdc = False  # Flag to force CDC and disable selection
 
     if st.session_state.child_info:
@@ -544,27 +536,9 @@ with st.sidebar:
         if child_age_months > 120:  # Over 10 years - WHO weight data not available
             force_cdc = True
             recommended_source = "CDC"
-            recommendation_reason = "🔒 Automatically using CDC (WHO weight data only available up to 10 years)"
-        # Recommendation logic based on age
-        elif child_age_months < 24:  # Under 2 years
-            recommended_source = "WHO"
-            recommendation_reason = "Recommended: WHO is best for children under 2 years"
-        elif child_age_months >= 24 and child_age_months <= 120:  # 2-10 years
-            recommended_source = "WHO"
-            recommendation_reason = "Recommended: WHO provides comprehensive data for this age range"
-        else:  # Over 19 years
-            recommended_source = "CDC"
-            recommendation_reason = "Recommended: CDC covers up to 20 years"
-
-        # Show recommendation
-        if force_cdc:
-            st.warning(recommendation_reason)
-        else:
-            st.info(f"💡 {recommendation_reason}")
 
     # Get current selection or use recommended
     if force_cdc:
-        # Force CDC and disable selection
         default_index = 1  # CDC
         st.session_state.data_source = "CDC"
         data_source = st.selectbox(
@@ -591,39 +565,50 @@ with st.sidebar:
         )
         st.session_state.data_source = data_source
 
-    if data_source == "WHO":
-        st.caption("📊 WHO Child Growth Standards (2006) and Growth Reference (2007)")
-    else:
-        st.caption("📊 CDC Growth Charts (2000) for US population")
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("💾 Save Child Info", use_container_width=True, type="primary"):
+        st.session_state.child_info = {
+            'gender': child_gender,
+            'birth_date': child_birth_date
+        }
+        st.success("Child info saved!")
+        st.rerun()
 
-    st.divider()
+with col2:
+    pass  # Data source info removed
 
-    # Today's Measurement Section
-    st.header("📅 Today's Measurement")
+st.divider()
 
-    if st.session_state.child_info:
+# Today's Measurement Section
+st.header("📅 Today's Measurement")
+
+if st.session_state.child_info:
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+
+    with col1:
         today_date = st.date_input("Measurement Date",
                                     value=date.today(),
                                     min_value=st.session_state.child_info['birth_date'],
                                     max_value=date.today(),
                                     key="today_date")
 
-        age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], today_date)
-        st.info(f"Age: {age_months} months ({age_months // 12} years, {age_months % 12} months)")
+    age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], today_date)
 
-        # Get 50th percentile defaults for this age and gender
-        default_height, default_weight = get_default_measurements(age_months, st.session_state.child_info['gender'], st.session_state.data_source)
+    # Get 50th percentile defaults for this age and gender
+    default_height, default_weight = get_default_measurements(age_months, st.session_state.child_info['gender'], st.session_state.data_source)
 
+    with col2:
         # Use age_months in key to reset defaults when date changes
         today_height = st.number_input("Height (cm)", min_value=0.0, max_value=250.0, value=default_height, step=0.1, key=f"today_height_{age_months}")
+
+    with col3:
         today_weight = st.number_input("Weight (kg)", min_value=0.0, max_value=150.0, value=default_weight, step=0.1, key=f"today_weight_{age_months}")
 
-        # Calculate and display BMI automatically
-        if today_height > 0 and today_weight > 0:
-            today_bmi = calculate_bmi(today_height, today_weight)
-            st.info(f"💡 Calculated BMI: {today_bmi:.2f} kg/m²")
-
-        if st.button("Save Today's Measurement", use_container_width=True):
+    with col4:
+        st.markdown("&nbsp;")  # Spacer
+        st.markdown("&nbsp;")  # Spacer
+        if st.button("➕ Add Measurement", use_container_width=True, type="primary"):
             today_bmi = calculate_bmi(today_height, today_weight) if today_height > 0 and today_weight > 0 else None
             st.session_state.today_measurement = {
                 'date': today_date,
@@ -634,12 +619,9 @@ with st.sidebar:
                 'gender': st.session_state.child_info['gender']
             }
             st.success("Today's measurement saved!")
-    else:
-        st.warning("Please save child info first")
-
-    st.divider()
-
-    st.info("💡 Tip: Add historical measurements directly in the editable table below (main content area)")
+            st.rerun()
+else:
+    st.warning("Please save child info first")
 
 # Main content - Today's Measurement Z-scores
 if st.session_state.today_measurement:
@@ -754,14 +736,6 @@ if st.session_state.today_measurement:
                         st.write(f"**Age:** {today['age_months']} months")
                 else:
                     st.warning("⚠️ BMI data not available for this age")
-            else:
-                if st.session_state.data_source == 'WHO':
-                    st.info("💡 WHO BMI-for-age is available from 5-19 years (61-228 months)")
-                else:  # CDC
-                    st.info("💡 CDC BMI-for-age is available from 2-20 years (24-240 months)")
-                st.caption(f"Current: {st.session_state.data_source}, Age: {today['age_months']} months")
-        else:
-            st.info("💡 Save measurement to calculate BMI")
 
     st.divider()
 
@@ -773,39 +747,38 @@ if st.session_state.child_info:
     col1, col2, col3 = st.columns([2, 2, 1])
 
     with col1:
-        # Export to YAML
-        if st.button("📤 Export Data (YAML)", use_container_width=True):
-            export_data = {
-                'child_info': {
-                    'gender': st.session_state.child_info['gender'],
-                    'birth_date': st.session_state.child_info['birth_date'].strftime('%Y-%m-%d')
-                },
-                'data_points': [],
-                'today_measurement': None
-            }
+        # Export to YAML - Prepare data for download
+        export_data = {
+            'child_info': {
+                'gender': st.session_state.child_info['gender'],
+                'birth_date': st.session_state.child_info['birth_date'].strftime('%Y-%m-%d')
+            },
+            'data_points': [],
+            'today_measurement': None
+        }
 
-            # Export historical data points
-            for point in st.session_state.data_points:
-                export_point = point.copy()
-                if 'date' in export_point:
-                    export_point['date'] = export_point['date'].strftime('%Y-%m-%d')
-                export_data['data_points'].append(export_point)
+        # Export historical data points
+        for point in st.session_state.data_points:
+            export_point = point.copy()
+            if 'date' in export_point:
+                export_point['date'] = export_point['date'].strftime('%Y-%m-%d')
+            export_data['data_points'].append(export_point)
 
-            # Export today's measurement
-            if st.session_state.today_measurement:
-                today_export = st.session_state.today_measurement.copy()
-                if 'date' in today_export:
-                    today_export['date'] = today_export['date'].strftime('%Y-%m-%d')
-                export_data['today_measurement'] = today_export
+        # Export today's measurement
+        if st.session_state.today_measurement:
+            today_export = st.session_state.today_measurement.copy()
+            if 'date' in today_export:
+                today_export['date'] = today_export['date'].strftime('%Y-%m-%d')
+            export_data['today_measurement'] = today_export
 
-            yaml_str = yaml.dump(export_data, default_flow_style=False, sort_keys=False)
-            st.download_button(
-                label="⬇️ Download YAML",
-                data=yaml_str,
-                file_name=f"growth_data_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.yaml",
-                mime="application/x-yaml",
-                type="primary"
-            )
+        yaml_str = yaml.dump(export_data, default_flow_style=False, sort_keys=False)
+        st.download_button(
+            label="📤 Download YAML",
+            data=yaml_str,
+            file_name=f"growth_data_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.yaml",
+            mime="application/x-yaml",
+            use_container_width=True
+        )
 
     with col2:
         # Import from file
@@ -901,14 +874,14 @@ if st.session_state.child_info:
 
             row = {
                 'Date': measurement['date'].strftime('%Y-%m-%d'),
-                'Age (months)': age_months,
                 'Height (cm)': round(measurement['height'], 1),
+                'Weight (kg)': round(measurement['weight'], 1),
+                'Age (months)': age_months,
+                'BMI': round(measurement['bmi'], 2) if 'bmi' in measurement and measurement['bmi'] is not None else None,
                 'Height Z-score': round(height_z, 2) if height_z is not None else None,
                 'Height %ile': round(height_perc, 1) if height_perc is not None else None,
-                'Weight (kg)': round(measurement['weight'], 1),
                 'Weight Z-score': round(weight_z, 2) if weight_z is not None else None,
                 'Weight %ile': round(weight_perc, 1) if weight_perc is not None else None,
-                'BMI': round(measurement['bmi'], 2) if 'bmi' in measurement and measurement['bmi'] is not None else None,
                 'BMI Z-score': round(bmi_z, 2) if bmi_z is not None else None,
                 'BMI %ile': round(bmi_perc, 1) if bmi_perc is not None else None,
                 'Today': '🔸' if measurement.get('is_today', False) else ''
@@ -919,22 +892,6 @@ if st.session_state.child_info:
 
         # Store table in session state for CSV export
         st.session_state.table_with_zscores = df_table.copy()
-
-        # Debug info - show if Z-scores are being calculated
-        if not df_table.empty:
-            has_height_z = df_table['Height Z-score'].notna().any()
-            has_weight_z = df_table['Weight Z-score'].notna().any()
-            has_bmi_z = df_table['BMI Z-score'].notna().any()
-            if has_height_z or has_weight_z or has_bmi_z:
-                st.success(f"✅ Z-scores calculated: Height={has_height_z}, Weight={has_weight_z}, BMI={has_bmi_z}")
-            else:
-                st.warning("⚠️ No Z-scores calculated - check that Age and measurements are valid for the selected data source")
-
-        # Display editable table
-        st.info("💡 Enter: Date, Height, Weight. Auto-calculated on save: Age (from date), BMI, and all Z-scores. Calculated columns are grayed out.")
-
-        # Show current values before editor for debugging
-        st.write("Table sample (first row):", df_table.iloc[0].to_dict() if not df_table.empty else "No data")
 
         edited_df = st.data_editor(
             df_table,
@@ -958,12 +915,6 @@ if st.session_state.child_info:
             hide_index=True,
             key="measurements_table"
         )
-
-        # Show data as text for copying
-        with st.expander("📄 View/Copy Table Data (with Z-scores)"):
-            if hasattr(st.session_state, 'table_with_zscores'):
-                text_data = st.session_state.table_with_zscores.to_string(index=False)
-                st.text_area("Copy table data:", text_data, height=250, label_visibility="collapsed")
 
         # Update session state with edited data
         if st.button("💾 Save Table Changes", use_container_width=False, type="primary"):
@@ -1009,8 +960,6 @@ if st.session_state.child_info:
                 st.rerun()
             except Exception as e:
                 st.error(f"❌ Error saving changes: {str(e)}")
-    else:
-        st.info("📝 No measurements yet. Add your first measurement using 'Today's Measurement' in the sidebar, or import data from a file. Then add more measurements directly in this table.")
 
     st.divider()
 
@@ -1389,10 +1338,6 @@ if st.session_state.child_info:
             )
 
             st.plotly_chart(fig_bmi, use_container_width=True)
-            if st.session_state.data_source == 'WHO':
-                st.caption("💡 BMI-for-age is WHO's recommended indicator for assessing thinness/overweight in children 5-19 years")
-            else:
-                st.caption("💡 CDC BMI-for-age charts for ages 2-20 years")
 
     # PDF Export Button
     st.divider()
@@ -1417,26 +1362,20 @@ if st.session_state.child_info:
         # Prepare filename
         filename = f"growth_report_{st.session_state.child_info['birth_date'].strftime('%Y%m%d')}.pdf"
 
-        col1, col2, col3 = st.columns([1, 1, 2])
-        with col1:
-            st.download_button(
-                label="📥 Download PDF Report",
-                data=pdf_buffer,
-                file_name=filename,
-                mime="application/pdf",
-                use_container_width=True,
-                type="primary"
-            )
-
-        with col2:
-            st.info("📊 Z-scores, measurements & charts")
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_buffer,
+            file_name=filename,
+            mime="application/pdf",
+            use_container_width=True,
+            type="primary"
+        )
 
     except Exception as e:
         st.error(f"⚠️ Error generating PDF: {str(e)}")
-        st.info("Report includes Z-scores, measurements, and growth charts")
 
 else:
-    st.info("👈 Please save child information in the sidebar to get started!")
+    pass  # No child info saved yet
 
     # Show sample charts
     st.subheader(f"Example: {st.session_state.data_source} Growth Standards")
