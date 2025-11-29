@@ -35,8 +35,8 @@ class TestGracefulErrorHandling:
             gender='Male',
             data_source='WHO'
         )
-        # Should return valid values
-        assert z_score is not None or z_score == 0  # z_score could be 0
+        # Should return valid values (z_score can be any float including 0)
+        assert z_score is not None
         assert percentile is not None
         assert mean is not None
         assert sd is not None
