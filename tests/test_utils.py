@@ -4,13 +4,7 @@ Unit tests for utility functions in growth_utils.py
 
 import pytest
 from datetime import date
-import sys
-import os
 
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import functions to test
 from growth_utils import (
     calculate_bmi,
     calculate_age_in_months,

@@ -3,15 +3,8 @@ End-to-end tests for complete growth tracking flows
 """
 
 import pytest
-import sys
 import os
 from datetime import date
-
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Change to repo root for data file access
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from growth_utils import (
     calculate_age_in_months,
@@ -23,6 +16,19 @@ from growth_utils import (
     interpret_z_score,
     get_default_measurements
 )
+
+
+# Store original directory and change to repo root for data file access
+_original_dir = os.getcwd()
+_repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+@pytest.fixture(scope="module", autouse=True)
+def change_to_repo_root():
+    """Change to repo root directory for tests that need data files"""
+    os.chdir(_repo_root)
+    yield
+    os.chdir(_original_dir)
 
 
 class TestGrowthDataRetrievalFlow:

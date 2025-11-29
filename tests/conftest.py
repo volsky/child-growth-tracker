@@ -3,12 +3,7 @@ Pytest configuration and fixtures for child growth tracker tests
 """
 
 import pytest
-import sys
-import os
 from datetime import date
-
-# Add parent directory to path to import from growth_utils
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 @pytest.fixture

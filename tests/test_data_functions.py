@@ -3,15 +3,8 @@ Unit tests for data loading and z-score calculation functions
 """
 
 import pytest
-import sys
 import os
 import pandas as pd
-
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Change to repo root for data file access
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from growth_utils import (
     get_height_data,
@@ -22,6 +15,19 @@ from growth_utils import (
     get_default_measurements,
     calculate_percentile_from_lms
 )
+
+
+# Store original directory and change to repo root for data file access
+_original_dir = os.getcwd()
+_repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+@pytest.fixture(scope="module", autouse=True)
+def change_to_repo_root():
+    """Change to repo root directory for tests that need data files"""
+    os.chdir(_repo_root)
+    yield
+    os.chdir(_original_dir)
 
 
 class TestDataLoading:
