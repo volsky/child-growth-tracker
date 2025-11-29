@@ -90,8 +90,8 @@ streamlit run child_growth_app.py
 8. Use "Clear All" to remove all historical data points
 
 9. **Import from Image/PDF** (Import Data tab):
+   - Set the `GEMINI_API_KEY` environment variable with your Google Gemini API key (get one free at https://makersuite.google.com/app/apikey)
    - Switch to the "Extract from Image/PDF" tab
-   - Enter your Google Gemini API key (get one free at https://makersuite.google.com/app/apikey)
    - Upload an image or PDF containing growth measurements (e.g., medical records, growth charts)
    - Click "Extract Measurements" to let the AI analyze the document
    - Review and edit the extracted measurements

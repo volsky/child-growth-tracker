@@ -829,42 +829,40 @@ with import_tab2:
     if not st.session_state.child_info:
         st.warning("⚠️ Please save child info first before importing measurements from images/PDFs.")
     else:
-        # API Key input
-        gemini_api_key = st.text_input(
-            "Google Gemini API Key",
-            type="password",
-            help="Enter your Google Gemini API key. Get one free at https://makersuite.google.com/app/apikey",
-            key="gemini_api_key"
-        )
+        # Get API Key from environment variable
+        gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
         
-        # File uploader for images and PDFs
-        image_file = st.file_uploader(
-            "Upload image or PDF with growth measurements",
-            type=['png', 'jpg', 'jpeg', 'pdf'],
-            key="image_import_file",
-            help="Supported formats: PNG, JPG, JPEG, PDF"
-        )
-        
-        if image_file is not None and gemini_api_key:
-            # Use file ID to prevent re-processing
-            image_file_id = f"img_{image_file.name}_{image_file.size}"
+        if not gemini_api_key:
+            st.warning("⚠️ GEMINI_API_KEY environment variable not set. Please set it to use AI extraction.")
+        else:
+            # File uploader for images and PDFs
+            image_file = st.file_uploader(
+                "Upload image or PDF with growth measurements",
+                type=['png', 'jpg', 'jpeg', 'pdf'],
+                key="image_import_file",
+                help="Supported formats: PNG, JPG, JPEG, PDF"
+            )
             
-            if 'last_image_file' not in st.session_state or st.session_state.last_image_file != image_file_id:
-                if st.button("🔍 Extract Measurements", type="primary", key="extract_btn"):
-                    with st.spinner("Analyzing document with AI..."):
-                        file_bytes = image_file.read()
-                        image_file.seek(0)
-                        measurements, error = extract_measurements_from_file(file_bytes, image_file.type, gemini_api_key)
-                        
-                        if error:
-                            st.error(f"❌ {error}")
-                        elif not measurements:
-                            st.warning("⚠️ No measurements found in the document. Please ensure the image contains a table or list of growth measurements.")
-                        else:
-                            # Store extracted measurements in session state for review
-                            st.session_state.extracted_measurements = measurements
-                            st.session_state.last_image_file = image_file_id
-                            st.rerun()
+            if image_file is not None:
+                # Use file ID to prevent re-processing
+                image_file_id = f"img_{image_file.name}_{image_file.size}"
+                
+                if 'last_image_file' not in st.session_state or st.session_state.last_image_file != image_file_id:
+                    if st.button("🔍 Extract Measurements", type="primary", key="extract_btn"):
+                        with st.spinner("Analyzing document with AI..."):
+                            file_bytes = image_file.read()
+                            image_file.seek(0)
+                            measurements, error = extract_measurements_from_file(file_bytes, image_file.type, gemini_api_key)
+                            
+                            if error:
+                                st.error(f"❌ {error}")
+                            elif not measurements:
+                                st.warning("⚠️ No measurements found in the document. Please ensure the image contains a table or list of growth measurements.")
+                            else:
+                                # Store extracted measurements in session state for review
+                                st.session_state.extracted_measurements = measurements
+                                st.session_state.last_image_file = image_file_id
+                                st.rerun()
         
         # Show extracted measurements for review and import
         if 'extracted_measurements' in st.session_state and st.session_state.extracted_measurements:
@@ -956,9 +954,6 @@ with import_tab2:
                     if 'last_image_file' in st.session_state:
                         del st.session_state.last_image_file
                     st.rerun()
-        
-        elif not gemini_api_key and image_file:
-            st.warning("⚠️ Please enter your Google Gemini API key to extract measurements.")
 
 st.divider()
 
