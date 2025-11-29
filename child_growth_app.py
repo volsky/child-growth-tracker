@@ -11,6 +11,14 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import json
 import yaml
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Load Growth Standards from CSV files
 # Data sources:
@@ -366,18 +374,31 @@ Weight Analysis:
 
         # Add historical data summary
         if data_points:
-            hist_text = f"\nHistorical Measurements:\n{'─'*37}\n"
-            hist_text += f"Total measurements: {len(data_points)}\n"
-            df = pd.DataFrame(data_points)
-            hist_text += f"Age range: {df['age'].min()}-{df['age'].max()} months\n"
-            hist_text += f"Height range: {df['height'].min():.1f}-{df['height'].max():.1f} cm\n"
-            hist_text += f"Weight range: {df['weight'].min():.1f}-{df['weight'].max():.1f} kg\n"
-            # Add BMI range if available
-            if 'bmi' in df.columns and df['bmi'].notna().any():
-                hist_text += f"BMI range: {df['bmi'].min():.2f}-{df['bmi'].max():.2f} kg/m²\n"
+            try:
+                hist_text = f"\nHistorical Measurements:\n{'─'*37}\n"
+                hist_text += f"Total measurements: {len(data_points)}\n"
+                df = pd.DataFrame(data_points)
+                hist_text += f"Age range: {df['age'].min()}-{df['age'].max()} months\n"
+                # Handle height range with possible None values
+                valid_heights = df['height'].dropna()
+                if not valid_heights.empty:
+                    hist_text += f"Height range: {valid_heights.min():.1f}-{valid_heights.max():.1f} cm\n"
+                else:
+                    hist_text += "Height range: No height data available\n"
+                # Handle weight range with possible None values
+                valid_weights = df['weight'].dropna()
+                if not valid_weights.empty:
+                    hist_text += f"Weight range: {valid_weights.min():.1f}-{valid_weights.max():.1f} kg\n"
+                else:
+                    hist_text += "Weight range: No weight data available\n"
+                # Add BMI range if available
+                if 'bmi' in df.columns and df['bmi'].notna().any():
+                    hist_text += f"BMI range: {df['bmi'].min():.2f}-{df['bmi'].max():.2f} kg/m²\n"
 
-            plt.text(0.1, 0.25, hist_text, fontsize=10, verticalalignment='top',
-                    fontfamily='monospace', transform=fig.transFigure)
+                plt.text(0.1, 0.25, hist_text, fontsize=10, verticalalignment='top',
+                        fontfamily='monospace', transform=fig.transFigure)
+            except Exception as e:
+                logger.error(f"Error generating historical data summary in PDF: {e}")
 
         # Add footer
         data_source_text = "WHO Child Growth Standards (2006) and Growth Reference (2007)" if data_source == "WHO" else "CDC Growth Charts (2000) for US population"
@@ -947,49 +968,73 @@ if st.session_state.child_info:
         # Create dataframe with z-scores
         table_data = []
         for measurement in all_measurements:
-            # Get age in months (handle both 'age' and 'age_months' keys)
-            age_months = measurement.get('age_months', measurement.get('age', 0))
+            try:
+                # Get age in months (handle both 'age' and 'age_months' keys)
+                age_months = measurement.get('age_months', measurement.get('age', 0))
 
-            # Calculate z-scores
-            height_z, height_perc, _, _ = calculate_z_score(
-                age_months, measurement['height'], 'height',
-                measurement['gender'], st.session_state.data_source
-            )
-            weight_z, weight_perc, _, _ = calculate_z_score(
-                age_months, measurement['weight'], 'weight',
-                measurement['gender'], st.session_state.data_source
-            )
+                # Get height and weight values, handling missing data gracefully
+                height_value = measurement.get('height')
+                weight_value = measurement.get('weight')
 
-            bmi_z = None
-            bmi_perc = None
-            if 'bmi' in measurement and measurement['bmi'] is not None:
-                bmi_available = False
-                if st.session_state.data_source == 'WHO' and age_months >= 61:
-                    bmi_available = True
-                elif st.session_state.data_source == 'CDC' and age_months >= 24:
-                    bmi_available = True
+                # Calculate z-scores only if values exist
+                height_z, height_perc = None, None
+                weight_z, weight_perc = None, None
 
-                if bmi_available:
-                    bmi_z, bmi_perc, _, _ = calculate_z_score(
-                        age_months, measurement['bmi'], 'bmi',
-                        measurement['gender'], st.session_state.data_source
-                    )
+                if height_value is not None:
+                    try:
+                        height_z, height_perc, _, _ = calculate_z_score(
+                            age_months, height_value, 'height',
+                            measurement['gender'], st.session_state.data_source
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error calculating height z-score for age {age_months}: {e}")
 
-            row = {
-                'Date': measurement['date'].strftime('%Y-%m-%d'),
-                'Height (cm)': round(measurement['height'], 1),
-                'Weight (kg)': round(measurement['weight'], 1),
-                'Age (months)': age_months,
-                'BMI': round(measurement['bmi'], 2) if 'bmi' in measurement and measurement['bmi'] is not None else None,
-                'Height SDS': round(height_z, 2) if height_z is not None else None,
-                'Height %ile': round(height_perc, 1) if height_perc is not None else None,
-                'Weight SDS': round(weight_z, 2) if weight_z is not None else None,
-                'Weight %ile': round(weight_perc, 1) if weight_perc is not None else None,
-                'BMI SDS': round(bmi_z, 2) if bmi_z is not None else None,
-                'BMI %ile': round(bmi_perc, 1) if bmi_perc is not None else None,
-                'Today': '🔸' if measurement.get('is_today', False) else ''
-            }
-            table_data.append(row)
+                if weight_value is not None:
+                    try:
+                        weight_z, weight_perc, _, _ = calculate_z_score(
+                            age_months, weight_value, 'weight',
+                            measurement['gender'], st.session_state.data_source
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error calculating weight z-score for age {age_months}: {e}")
+
+                bmi_z = None
+                bmi_perc = None
+                if 'bmi' in measurement and measurement['bmi'] is not None:
+                    bmi_available = False
+                    if st.session_state.data_source == 'WHO' and age_months >= 61:
+                        bmi_available = True
+                    elif st.session_state.data_source == 'CDC' and age_months >= 24:
+                        bmi_available = True
+
+                    if bmi_available:
+                        try:
+                            bmi_z, bmi_perc, _, _ = calculate_z_score(
+                                age_months, measurement['bmi'], 'bmi',
+                                measurement['gender'], st.session_state.data_source
+                            )
+                        except Exception as e:
+                            logger.warning(f"Error calculating BMI z-score for age {age_months}: {e}")
+
+                row = {
+                    'Date': measurement['date'].strftime('%Y-%m-%d'),
+                    'Height (cm)': round(height_value, 1) if height_value is not None else None,
+                    'Weight (kg)': round(weight_value, 1) if weight_value is not None else None,
+                    'Age (months)': age_months,
+                    'BMI': round(measurement['bmi'], 2) if 'bmi' in measurement and measurement['bmi'] is not None else None,
+                    'Height SDS': round(height_z, 2) if height_z is not None else None,
+                    'Height %ile': round(height_perc, 1) if height_perc is not None else None,
+                    'Weight SDS': round(weight_z, 2) if weight_z is not None else None,
+                    'Weight %ile': round(weight_perc, 1) if weight_perc is not None else None,
+                    'BMI SDS': round(bmi_z, 2) if bmi_z is not None else None,
+                    'BMI %ile': round(bmi_perc, 1) if bmi_perc is not None else None,
+                    'Today': '🔸' if measurement.get('is_today', False) else ''
+                }
+                table_data.append(row)
+            except Exception as e:
+                logger.error(f"Error processing measurement: {e}")
+                # Continue processing other measurements even if one fails
+                continue
 
         df_table = pd.DataFrame(table_data)
 
@@ -1024,18 +1069,45 @@ if st.session_state.child_info:
             try:
                 # Clear existing data points
                 st.session_state.data_points = []
+                rows_processed = 0
+                rows_skipped = 0
 
                 # Process each row
                 for idx, row in edited_df.iterrows():
-                    if pd.notna(row['Date']) and pd.notna(row['Height (cm)']) and pd.notna(row['Weight (kg)']):
-                        measurement_date = datetime.strptime(row['Date'], '%Y-%m-%d').date()
+                    try:
+                        # A row needs at least a date and at least one measurement (height or weight)
+                        has_date = pd.notna(row['Date'])
+                        has_height = pd.notna(row['Height (cm)'])
+                        has_weight = pd.notna(row['Weight (kg)'])
+
+                        if not has_date:
+                            logger.debug(f"Row {idx}: Skipping row without date")
+                            rows_skipped += 1
+                            continue
+
+                        if not has_height and not has_weight:
+                            logger.warning(f"Row {idx}: Skipping row with date but no height or weight")
+                            rows_skipped += 1
+                            continue
+
+                        try:
+                            measurement_date = datetime.strptime(row['Date'], '%Y-%m-%d').date()
+                        except ValueError as e:
+                            logger.error(f"Row {idx}: Invalid date format '{row['Date']}': {e}")
+                            rows_skipped += 1
+                            continue
 
                         # Calculate age from birth_date and measurement_date
                         age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], measurement_date)
 
-                        height = float(row['Height (cm)'])
-                        weight = float(row['Weight (kg)'])
-                        bmi = calculate_bmi(height, weight) if height > 0 and weight > 0 else None
+                        # Handle missing height or weight gracefully
+                        height = float(row['Height (cm)']) if has_height else None
+                        weight = float(row['Weight (kg)']) if has_weight else None
+
+                        # Calculate BMI only if both height and weight are available
+                        bmi = None
+                        if height is not None and weight is not None and height > 0 and weight > 0:
+                            bmi = calculate_bmi(height, weight)
 
                         # Check if this is today's measurement
                         is_today_row = row.get('Today', '') == '🔸'
@@ -1058,10 +1130,20 @@ if st.session_state.child_info:
                                 'weight': weight,
                                 'bmi': bmi
                             })
+                        rows_processed += 1
+                        logger.info(f"Row {idx}: Successfully processed measurement from {measurement_date}")
 
-                st.success("✅ Changes saved successfully!")
+                    except Exception as row_error:
+                        logger.error(f"Row {idx}: Error processing row: {row_error}")
+                        rows_skipped += 1
+                        continue
+
+                if rows_skipped > 0:
+                    st.warning(f"⚠️ {rows_skipped} row(s) were skipped due to missing or invalid data. Check logs for details.")
+                st.success(f"✅ {rows_processed} measurement(s) saved successfully!")
                 st.rerun()
             except Exception as e:
+                logger.error(f"Error saving table changes: {e}")
                 st.error(f"❌ Error saving changes: {str(e)}")
 
     st.divider()
@@ -1152,17 +1234,20 @@ if st.session_state.child_info:
     # Add historical data points
     if st.session_state.data_points:
         df = pd.DataFrame(st.session_state.data_points)
-        fig_height.add_trace(go.Scatter(
-            x=df['age'],
-            y=df['height'],
-            mode='markers+lines',
-            name='Historical Measurements',
-            marker=dict(size=10, color='blue', symbol='circle'),
-            line=dict(color='blue', width=2, dash='dash')
-        ))
+        # Filter to only include rows with valid height values
+        df_with_height = df[df['height'].notna()]
+        if not df_with_height.empty:
+            fig_height.add_trace(go.Scatter(
+                x=df_with_height['age'],
+                y=df_with_height['height'],
+                mode='markers+lines',
+                name='Historical Measurements',
+                marker=dict(size=10, color='blue', symbol='circle'),
+                line=dict(color='blue', width=2, dash='dash')
+            ))
 
     # Add today's measurement
-    if st.session_state.today_measurement:
+    if st.session_state.today_measurement and st.session_state.today_measurement.get('height') is not None:
         today = st.session_state.today_measurement
         fig_height.add_trace(go.Scatter(
             x=[today['age_months']],
@@ -1183,8 +1268,10 @@ if st.session_state.child_info:
         actual_heights = []
         if st.session_state.data_points:
             df = pd.DataFrame(st.session_state.data_points)
-            actual_heights.extend(df['height'].tolist())
-        if st.session_state.today_measurement:
+            # Only include non-null height values
+            valid_heights = df['height'].dropna().tolist()
+            actual_heights.extend(valid_heights)
+        if st.session_state.today_measurement and st.session_state.today_measurement.get('height') is not None:
             actual_heights.append(st.session_state.today_measurement['height'])
 
         if actual_heights:
@@ -1246,17 +1333,20 @@ if st.session_state.child_info:
         # Add historical data points
         if st.session_state.data_points:
             df = pd.DataFrame(st.session_state.data_points)
-            fig_weight.add_trace(go.Scatter(
-                x=df['age'],
-                y=df['weight'],
-                mode='markers+lines',
-                name='Historical Measurements',
-                marker=dict(size=10, color='blue', symbol='circle'),
-                line=dict(color='blue', width=2, dash='dash')
-            ))
+            # Filter to only include rows with valid weight values
+            df_with_weight = df[df['weight'].notna()]
+            if not df_with_weight.empty:
+                fig_weight.add_trace(go.Scatter(
+                    x=df_with_weight['age'],
+                    y=df_with_weight['weight'],
+                    mode='markers+lines',
+                    name='Historical Measurements',
+                    marker=dict(size=10, color='blue', symbol='circle'),
+                    line=dict(color='blue', width=2, dash='dash')
+                ))
 
         # Add today's measurement
-        if st.session_state.today_measurement:
+        if st.session_state.today_measurement and st.session_state.today_measurement.get('weight') is not None:
             today = st.session_state.today_measurement
             fig_weight.add_trace(go.Scatter(
                 x=[today['age_months']],
@@ -1276,8 +1366,10 @@ if st.session_state.child_info:
             actual_weights = []
             if st.session_state.data_points:
                 df = pd.DataFrame(st.session_state.data_points)
-                actual_weights.extend(df['weight'].tolist())
-            if st.session_state.today_measurement:
+                # Only include non-null weight values
+                valid_weights = df['weight'].dropna().tolist()
+                actual_weights.extend(valid_weights)
+            if st.session_state.today_measurement and st.session_state.today_measurement.get('weight') is not None:
                 actual_weights.append(st.session_state.today_measurement['weight'])
 
             if actual_weights:
