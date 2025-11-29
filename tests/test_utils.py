@@ -16,9 +16,14 @@ import os
 from datetime import date
 import pandas as pd
 import numpy as np
+from scipy.stats import norm
 
-# Change to repository root to find data files
-os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add repository root to path to find growth_utils module
+repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, repo_root)
+
+# Change to repository root to find data files (needed for CSV loading)
+os.chdir(repo_root)
 
 # Now import the functions from growth_utils
 from growth_utils import (
@@ -31,6 +36,15 @@ from growth_utils import (
     calculate_z_score,
     get_growth_statistics,
 )
+
+# Constants for age conversions (months)
+MONTHS_PER_YEAR = 12
+AGE_2_YEARS = 2 * MONTHS_PER_YEAR  # 24 months
+AGE_5_YEARS = 5 * MONTHS_PER_YEAR  # 60 months
+AGE_5_YEARS_1_MONTH = 5 * MONTHS_PER_YEAR + 1  # 61 months (WHO BMI starts here)
+AGE_10_YEARS = 10 * MONTHS_PER_YEAR  # 120 months
+AGE_19_YEARS = 19 * MONTHS_PER_YEAR  # 228 months
+AGE_20_YEARS = 20 * MONTHS_PER_YEAR  # 240 months
 
 
 class TestCalculateBmi:
@@ -104,14 +118,14 @@ class TestCalculateAgeInMonths:
         birth = date(2018, 3, 15)
         measurement = date(2023, 3, 15)
         age = calculate_age_in_months(birth, measurement)
-        assert age == 60
+        assert age == AGE_5_YEARS
 
     def test_ten_years(self):
         """Test age for 10 year old child"""
         birth = date(2013, 7, 1)
         measurement = date(2023, 7, 1)
         age = calculate_age_in_months(birth, measurement)
-        assert age == 120
+        assert age == AGE_10_YEARS
 
     def test_crossing_year_boundary(self):
         """Test age calculation crossing year boundary"""
@@ -280,13 +294,13 @@ class TestGetHeightData:
         """Test WHO height data covers expected age range"""
         df = get_height_data("Male", "WHO")
         assert df['age_months'].min() == 0  # Starts at birth
-        assert df['age_months'].max() == 228  # Up to 19 years
+        assert df['age_months'].max() == AGE_19_YEARS  # Up to 19 years
 
     def test_cdc_data_age_range(self):
         """Test CDC height data covers expected age range"""
         df = get_height_data("Male", "CDC")
-        assert df['age_months'].min() == 24  # Starts at 2 years
-        assert df['age_months'].max() == 240  # Up to 20 years
+        assert df['age_months'].min() == AGE_2_YEARS  # Starts at 2 years
+        assert df['age_months'].max() == AGE_20_YEARS  # Up to 20 years
 
     def test_percentile_ordering(self):
         """Test that percentiles are in correct order"""
@@ -337,13 +351,13 @@ class TestGetWeightData:
         """Test WHO weight data covers expected age range (0-10 years)"""
         df = get_weight_data("Male", "WHO")
         assert df['age_months'].min() == 0  # Starts at birth
-        assert df['age_months'].max() == 120  # Up to 10 years
+        assert df['age_months'].max() == AGE_10_YEARS  # Up to 10 years
 
     def test_cdc_weight_age_range(self):
         """Test CDC weight data covers expected age range (2-20 years)"""
         df = get_weight_data("Male", "CDC")
-        assert df['age_months'].min() == 24  # Starts at 2 years
-        assert df['age_months'].max() == 240  # Up to 20 years
+        assert df['age_months'].min() == AGE_2_YEARS  # Starts at 2 years
+        assert df['age_months'].max() == AGE_20_YEARS  # Up to 20 years
 
     def test_percentile_ordering(self):
         """Test that percentiles are in correct order"""
@@ -393,14 +407,14 @@ class TestGetBmiData:
     def test_who_bmi_age_range(self):
         """Test WHO BMI data covers expected age range (5-19 years)"""
         df = get_bmi_data("Male", "WHO")
-        assert df['age_months'].min() == 61  # Starts at 5 years
-        assert df['age_months'].max() == 228  # Up to 19 years
+        assert df['age_months'].min() == AGE_5_YEARS_1_MONTH  # Starts at 5 years + 1 month
+        assert df['age_months'].max() == AGE_19_YEARS  # Up to 19 years
 
     def test_cdc_bmi_age_range(self):
         """Test CDC BMI data covers expected age range (2-20 years)"""
         df = get_bmi_data("Male", "CDC")
-        assert df['age_months'].min() == 24  # Starts at 2 years
-        assert df['age_months'].max() >= 240  # Up to at least 20 years
+        assert df['age_months'].min() == AGE_2_YEARS  # Starts at 2 years
+        assert df['age_months'].max() >= AGE_20_YEARS  # Up to at least 20 years
 
     def test_percentile_ordering(self):
         """Test that percentiles are in correct order"""
@@ -598,14 +612,11 @@ class TestLMSPercentileCalculation:
 
     def test_zscore_to_percentile_conversion(self):
         """Test z-score to percentile conversion accuracy"""
-        # Use scipy.stats.norm directly for comparison
-        from scipy.stats import norm
-        
         # Get z-score for a known value
-        z_score, percentile, _, _ = calculate_z_score(60, 110, 'height', 'Male', 'WHO')
+        z_score, percentile, _, _ = calculate_z_score(AGE_5_YEARS, 110, 'height', 'Male', 'WHO')
         
         if z_score is not None:
-            # Calculate expected percentile from z-score
+            # Calculate expected percentile from z-score using scipy.stats.norm
             expected_percentile = norm.cdf(z_score) * 100
             assert abs(percentile - expected_percentile) < 0.01
 
