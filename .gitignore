@@ -48,3 +48,13 @@ who_data/who_standards.csv
 # CDC data source files
 cdc_statage.csv
 cdc_wtage.csv
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+*.py,cover
+.hypothesis/
+.nox/
+.tox/
