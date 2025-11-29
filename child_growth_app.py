@@ -11,11 +11,157 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import json
 import yaml
+import re
+import google.generativeai as genai
+import fitz  # PyMuPDF
 
 # Load Growth Standards from CSV files
 # Data sources:
 # - WHO Child Growth Standards (2006) and Growth Reference (2007) - Global/multi-ethnic
 # - CDC Growth Charts (2000) - US population
+
+def extract_pdf_images(pdf_bytes):
+    """Extract images from PDF file using PyMuPDF"""
+    images = []
+    pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
+    
+    for page_num in range(len(pdf_document)):
+        page = pdf_document[page_num]
+        # Render page as image at higher resolution for better OCR
+        mat = fitz.Matrix(2, 2)  # 2x zoom for better quality
+        pix = page.get_pixmap(matrix=mat)
+        img_bytes = pix.tobytes("png")
+        images.append(img_bytes)
+    
+    pdf_document.close()
+    return images
+
+def extract_measurements_from_image(image_bytes, api_key):
+    """
+    Extract growth measurements from an image using Google Gemini Vision.
+    Returns a list of measurements, each containing date, height, and weight.
+    """
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        prompt = """Analyze this image and extract all child growth measurements from the table or document.
+        
+For each measurement, extract:
+- Date (in YYYY-MM-DD format if possible, otherwise convert to this format)
+- Height in centimeters (cm)
+- Weight in kilograms (kg)
+
+One or both of height/weight might be missing for some entries - that's okay, include what's available.
+
+Return the data as a JSON array with objects containing these fields:
+- "date": string in YYYY-MM-DD format (required)
+- "height": number in cm (optional, null if not available)
+- "weight": number in kg (optional, null if not available)
+
+Example output:
+[
+  {"date": "2024-01-15", "height": 85.5, "weight": 12.3},
+  {"date": "2024-03-20", "height": 88.0, "weight": null},
+  {"date": "2024-06-10", "height": null, "weight": 13.5}
+]
+
+If no measurements are found, return an empty array: []
+Return ONLY the JSON array, no additional text."""
+
+        # Create image part for Gemini
+        image_part = {
+            "mime_type": "image/png" if image_bytes[:8] == b'\x89PNG\r\n\x1a\n' else "image/jpeg",
+            "data": image_bytes
+        }
+        
+        response = model.generate_content([prompt, image_part])
+        response_text = response.text.strip()
+        
+        # Clean up the response - remove markdown code blocks if present
+        if response_text.startswith("```"):
+            # Remove first line (```json or ```)
+            lines = response_text.split('\n')
+            response_text = '\n'.join(lines[1:])
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+        
+        # Parse JSON response
+        measurements = json.loads(response_text)
+        
+        # Validate and clean measurements
+        cleaned_measurements = []
+        for m in measurements:
+            if 'date' not in m or not m['date']:
+                continue
+            
+            cleaned = {
+                'date': m['date'],
+                'height': m.get('height'),
+                'weight': m.get('weight')
+            }
+            
+            # Skip if both height and weight are missing
+            if cleaned['height'] is None and cleaned['weight'] is None:
+                continue
+                
+            cleaned_measurements.append(cleaned)
+        
+        return cleaned_measurements, None
+        
+    except json.JSONDecodeError as e:
+        return [], f"Failed to parse response from AI: {str(e)}"
+    except Exception as e:
+        return [], f"Error extracting measurements: {str(e)}"
+
+def process_uploaded_file(uploaded_file, api_key):
+    """
+    Process an uploaded file (image or PDF) and extract measurements.
+    Returns list of measurements and any error message.
+    """
+    file_bytes = uploaded_file.read()
+    uploaded_file.seek(0)  # Reset file pointer
+    
+    file_type = uploaded_file.type
+    all_measurements = []
+    errors = []
+    
+    if file_type == "application/pdf":
+        # Extract images from PDF pages
+        try:
+            images = extract_pdf_images(file_bytes)
+            if not images:
+                return [], "No pages found in PDF"
+            
+            for i, img_bytes in enumerate(images):
+                measurements, error = extract_measurements_from_image(img_bytes, api_key)
+                if error:
+                    errors.append(f"Page {i+1}: {error}")
+                else:
+                    all_measurements.extend(measurements)
+        except Exception as e:
+            return [], f"Error processing PDF: {str(e)}"
+    else:
+        # Process as image
+        measurements, error = extract_measurements_from_image(file_bytes, api_key)
+        if error:
+            return [], error
+        all_measurements = measurements
+    
+    # Remove duplicates based on date
+    seen_dates = set()
+    unique_measurements = []
+    for m in all_measurements:
+        if m['date'] not in seen_dates:
+            seen_dates.add(m['date'])
+            unique_measurements.append(m)
+    
+    # Sort by date
+    unique_measurements.sort(key=lambda x: x['date'])
+    
+    error_msg = "; ".join(errors) if errors else None
+    return unique_measurements, error_msg
 
 @st.cache_data
 def load_growth_data_from_csv(filename, data_source='WHO'):
@@ -639,65 +785,212 @@ st.divider()
 
 # Import Data Section - Available anytime
 st.header("📥 Import Data")
-uploaded_file = st.file_uploader("Import growth data from file", type=['txt'], key="import_file_early")
-if uploaded_file is not None:
-    # Use file ID to prevent re-processing the same file
-    file_id = f"{uploaded_file.name}_{uploaded_file.size}"
 
-    # Check if this file has already been processed
-    if 'last_imported_file' not in st.session_state or st.session_state.last_imported_file != file_id:
-        try:
-            file_content = uploaded_file.read().decode('utf-8')
-            import_data = yaml.safe_load(file_content)
+# Tab for different import methods
+import_tab1, import_tab2 = st.tabs(["📄 Import from Text File", "📸 Extract from Image/PDF"])
 
-            # Load child info
-            if 'child_info' in import_data:
-                st.session_state.child_info = {
-                    'gender': import_data['child_info']['gender'],
-                    'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
-                }
+with import_tab1:
+    uploaded_file = st.file_uploader("Import growth data from YAML text file", type=['txt'], key="import_file_early")
+    if uploaded_file is not None:
+        # Use file ID to prevent re-processing the same file
+        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
 
-            # Load data points
-            if 'data_points' in import_data:
-                st.session_state.data_points = []
-                for point in import_data['data_points']:
-                    point_copy = point.copy()
-                    if 'date' in point_copy:
-                        point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
-                    st.session_state.data_points.append(point_copy)
+        # Check if this file has already been processed
+        if 'last_imported_file' not in st.session_state or st.session_state.last_imported_file != file_id:
+            try:
+                file_content = uploaded_file.read().decode('utf-8')
+                import_data = yaml.safe_load(file_content)
 
-            # Handle today's measurement based on date
-            if 'today_measurement' in import_data and import_data['today_measurement'] is not None:
-                today_copy = import_data['today_measurement'].copy()
-                if 'date' in today_copy:
-                    today_copy['date'] = datetime.strptime(today_copy['date'], '%Y-%m-%d').date()
+                # Load child info
+                if 'child_info' in import_data:
+                    st.session_state.child_info = {
+                        'gender': import_data['child_info']['gender'],
+                        'birth_date': datetime.strptime(import_data['child_info']['birth_date'], '%Y-%m-%d').date()
+                    }
 
-                    # Check if the saved "today's measurement" is from a previous date
-                    if today_copy['date'] < date.today():
-                        # Add it to historical data points
-                        st.session_state.data_points.append({
-                            'date': today_copy['date'],
-                            'gender': today_copy['gender'],
-                            'age': today_copy['age_months'],
-                            'height': today_copy['height'],
-                            'weight': today_copy['weight'],
-                            'bmi': today_copy.get('bmi')
-                        })
-                        st.session_state.today_measurement = None
+                # Load data points
+                if 'data_points' in import_data:
+                    st.session_state.data_points = []
+                    for point in import_data['data_points']:
+                        point_copy = point.copy()
+                        if 'date' in point_copy:
+                            point_copy['date'] = datetime.strptime(point_copy['date'], '%Y-%m-%d').date()
+                        st.session_state.data_points.append(point_copy)
+
+                # Handle today's measurement based on date
+                if 'today_measurement' in import_data and import_data['today_measurement'] is not None:
+                    today_copy = import_data['today_measurement'].copy()
+                    if 'date' in today_copy:
+                        today_copy['date'] = datetime.strptime(today_copy['date'], '%Y-%m-%d').date()
+
+                        # Check if the saved "today's measurement" is from a previous date
+                        if today_copy['date'] < date.today():
+                            # Add it to historical data points
+                            st.session_state.data_points.append({
+                                'date': today_copy['date'],
+                                'gender': today_copy['gender'],
+                                'age': today_copy['age_months'],
+                                'height': today_copy['height'],
+                                'weight': today_copy['weight'],
+                                'bmi': today_copy.get('bmi')
+                            })
+                            st.session_state.today_measurement = None
+                        else:
+                            # Keep it as today's measurement if it's from today
+                            st.session_state.today_measurement = today_copy
+                else:
+                    st.session_state.today_measurement = None
+
+                # Mark this file as processed
+                st.session_state.last_imported_file = file_id
+
+                st.success("✅ Data imported successfully! Child info and historical measurements loaded.")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"❌ Error importing file: {str(e)}")
+
+with import_tab2:
+    st.markdown("""
+    **Extract historical measurements from images or PDFs using AI**
+    
+    Upload a photo or scan of a growth chart, medical record, or any document 
+    containing child measurements. The AI will extract date, height, and weight 
+    from the document.
+    """)
+    
+    # Check if child info is saved (required for this feature)
+    if not st.session_state.child_info:
+        st.warning("⚠️ Please save child info first before importing measurements from images/PDFs.")
+    else:
+        # API Key input
+        gemini_api_key = st.text_input(
+            "Google Gemini API Key",
+            type="password",
+            help="Enter your Google Gemini API key. Get one free at https://makersuite.google.com/app/apikey",
+            key="gemini_api_key"
+        )
+        
+        # File uploader for images and PDFs
+        image_file = st.file_uploader(
+            "Upload image or PDF with growth measurements",
+            type=['png', 'jpg', 'jpeg', 'pdf'],
+            key="image_import_file",
+            help="Supported formats: PNG, JPG, JPEG, PDF"
+        )
+        
+        if image_file is not None and gemini_api_key:
+            # Use file ID to prevent re-processing
+            image_file_id = f"img_{image_file.name}_{image_file.size}"
+            
+            if 'last_image_file' not in st.session_state or st.session_state.last_image_file != image_file_id:
+                if st.button("🔍 Extract Measurements", type="primary", key="extract_btn"):
+                    with st.spinner("Analyzing document with AI..."):
+                        measurements, error = process_uploaded_file(image_file, gemini_api_key)
+                        
+                        if error:
+                            st.error(f"❌ {error}")
+                        elif not measurements:
+                            st.warning("⚠️ No measurements found in the document. Please ensure the image contains a table or list of growth measurements.")
+                        else:
+                            # Store extracted measurements in session state for review
+                            st.session_state.extracted_measurements = measurements
+                            st.session_state.last_image_file = image_file_id
+                            st.rerun()
+        
+        # Show extracted measurements for review and import
+        if 'extracted_measurements' in st.session_state and st.session_state.extracted_measurements:
+            st.subheader("📋 Extracted Measurements")
+            st.info(f"Found {len(st.session_state.extracted_measurements)} measurements. Review and confirm to import.")
+            
+            # Create a dataframe for display
+            extracted_df = pd.DataFrame(st.session_state.extracted_measurements)
+            
+            # Make it editable so user can fix any mistakes
+            edited_extracted = st.data_editor(
+                extracted_df,
+                use_container_width=True,
+                num_rows="dynamic",
+                column_config={
+                    "date": st.column_config.TextColumn("Date (YYYY-MM-DD)", width="medium"),
+                    "height": st.column_config.NumberColumn("Height (cm)", format="%.1f", width="small"),
+                    "weight": st.column_config.NumberColumn("Weight (kg)", format="%.1f", width="small"),
+                },
+                key="extracted_editor"
+            )
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("✅ Import All", type="primary", use_container_width=True):
+                    # Import the measurements
+                    imported_count = 0
+                    skipped_count = 0
+                    
+                    for _, row in edited_extracted.iterrows():
+                        try:
+                            measurement_date = datetime.strptime(row['date'], '%Y-%m-%d').date()
+                            height = row.get('height')
+                            weight = row.get('weight')
+                            
+                            # Skip if both are missing
+                            if pd.isna(height) and pd.isna(weight):
+                                skipped_count += 1
+                                continue
+                            
+                            # Use 50th percentile default if one is missing
+                            age_months = calculate_age_in_months(st.session_state.child_info['birth_date'], measurement_date)
+                            default_height, default_weight = get_default_measurements(
+                                age_months, 
+                                st.session_state.child_info['gender'], 
+                                st.session_state.data_source
+                            )
+                            
+                            if pd.isna(height):
+                                height = default_height
+                            if pd.isna(weight):
+                                weight = default_weight
+                            
+                            # Calculate BMI
+                            bmi = calculate_bmi(float(height), float(weight))
+                            
+                            # Add to data points
+                            st.session_state.data_points.append({
+                                'date': measurement_date,
+                                'gender': st.session_state.child_info['gender'],
+                                'age': age_months,
+                                'height': float(height),
+                                'weight': float(weight),
+                                'bmi': bmi
+                            })
+                            imported_count += 1
+                            
+                        except Exception as e:
+                            skipped_count += 1
+                            continue
+                    
+                    # Clear extracted measurements
+                    del st.session_state.extracted_measurements
+                    if 'last_image_file' in st.session_state:
+                        del st.session_state.last_image_file
+                    
+                    if imported_count > 0:
+                        st.success(f"✅ Successfully imported {imported_count} measurements!")
+                        if skipped_count > 0:
+                            st.info(f"Skipped {skipped_count} invalid entries.")
+                        st.rerun()
                     else:
-                        # Keep it as today's measurement if it's from today
-                        st.session_state.today_measurement = today_copy
-            else:
-                st.session_state.today_measurement = None
-
-            # Mark this file as processed
-            st.session_state.last_imported_file = file_id
-
-            st.success("✅ Data imported successfully! Child info and historical measurements loaded.")
-            st.rerun()
-
-        except Exception as e:
-            st.error(f"❌ Error importing file: {str(e)}")
+                        st.error("❌ No valid measurements to import.")
+            
+            with col2:
+                if st.button("❌ Cancel", use_container_width=True):
+                    del st.session_state.extracted_measurements
+                    if 'last_image_file' in st.session_state:
+                        del st.session_state.last_image_file
+                    st.rerun()
+        
+        elif not gemini_api_key and image_file:
+            st.warning("⚠️ Please enter your Google Gemini API key to extract measurements.")
 
 st.divider()
 
