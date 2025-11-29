@@ -1,1 +1,1 @@
-# Test package for child growth tracker
+# Tests package for child growth tracker
