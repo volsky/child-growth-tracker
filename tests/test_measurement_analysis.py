@@ -83,7 +83,7 @@ class TestZScoreCalculation:
         
     def test_who_weight_z_score_for_underweight_child(self):
         """Test Z-score calculation for an underweight child."""
-        # For a 12-month male, median weight is ~9.6 kg, testing with much lower weight
+        # For a 12-month male, median weight is ~10.2 kg, testing with much lower weight
         z_score, percentile, mean, sd = calculate_z_score(12, 7.0, 'weight', 'Male', 'WHO')
         
         assert z_score is not None, "Z-score should not be None"
