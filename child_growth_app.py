@@ -11,42 +11,25 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import json
 import yaml
-import re
 import google.generativeai as genai
-import fitz  # PyMuPDF
 
 # Load Growth Standards from CSV files
 # Data sources:
 # - WHO Child Growth Standards (2006) and Growth Reference (2007) - Global/multi-ethnic
 # - CDC Growth Charts (2000) - US population
 
-def extract_pdf_images(pdf_bytes):
-    """Extract images from PDF file using PyMuPDF"""
-    images = []
-    pdf_document = fitz.open(stream=pdf_bytes, filetype="pdf")
-    
-    for page_num in range(len(pdf_document)):
-        page = pdf_document[page_num]
-        # Render page as image at higher resolution for better OCR
-        mat = fitz.Matrix(2, 2)  # 2x zoom for better quality
-        pix = page.get_pixmap(matrix=mat)
-        img_bytes = pix.tobytes("png")
-        images.append(img_bytes)
-    
-    pdf_document.close()
-    return images
-
-def extract_measurements_from_image(image_bytes, api_key):
+def extract_measurements_from_file(file_bytes, file_type, api_key):
     """
-    Extract growth measurements from an image using Google Gemini Vision.
+    Extract growth measurements from an uploaded file using Google Gemini.
+    Supports images (PNG, JPG, JPEG) and PDF files.
     Returns a list of measurements, each containing date, height, and weight.
     """
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.0-flash')
         
-        prompt = """Analyze this image and extract all child growth measurements from the table or document.
-        
+        prompt = """Analyze this document and extract all child growth measurements from any tables or records.
+
 For each measurement, extract:
 - Date (in YYYY-MM-DD format if possible, otherwise convert to this format)
 - Height in centimeters (cm)
@@ -69,29 +52,35 @@ Example output:
 If no measurements are found, return an empty array: []
 Return ONLY the JSON array, no additional text."""
 
-        # Detect image MIME type from magic bytes
-        mime_type = "image/jpeg"  # Default fallback
-        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+        # Determine MIME type
+        if file_type == "application/pdf":
+            mime_type = "application/pdf"
+        elif file_type == "image/png":
             mime_type = "image/png"
-        elif image_bytes[:2] == b'\xff\xd8':
+        elif file_type in ("image/jpeg", "image/jpg"):
             mime_type = "image/jpeg"
-        elif image_bytes[:6] in (b'GIF87a', b'GIF89a'):
-            mime_type = "image/gif"
-        elif image_bytes[:4] == b'RIFF' and image_bytes[8:12] == b'WEBP':
-            mime_type = "image/webp"
+        else:
+            # Fallback based on magic bytes
+            if file_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+                mime_type = "image/png"
+            elif file_bytes[:2] == b'\xff\xd8':
+                mime_type = "image/jpeg"
+            elif file_bytes[:4] == b'%PDF':
+                mime_type = "application/pdf"
+            else:
+                mime_type = "image/jpeg"  # Default fallback
         
-        # Create image part for Gemini
-        image_part = {
+        # Create file part for Gemini
+        file_part = {
             "mime_type": mime_type,
-            "data": image_bytes
+            "data": file_bytes
         }
         
-        response = model.generate_content([prompt, image_part])
+        response = model.generate_content([prompt, file_part])
         response_text = response.text.strip()
         
         # Clean up the response - remove markdown code blocks if present
         if response_text.startswith("```"):
-            # Remove first line (```json or ```)
             lines = response_text.split('\n')
             response_text = '\n'.join(lines[1:])
             if response_text.endswith("```"):
@@ -119,67 +108,26 @@ Return ONLY the JSON array, no additional text."""
                 
             cleaned_measurements.append(cleaned)
         
-        return cleaned_measurements, None
+        # Merge duplicates based on date
+        merged_measurements = {}
+        for m in cleaned_measurements:
+            date_key = m['date']
+            if date_key not in merged_measurements:
+                merged_measurements[date_key] = {'date': date_key, 'height': None, 'weight': None}
+            if m.get('height') is not None:
+                merged_measurements[date_key]['height'] = m['height']
+            if m.get('weight') is not None:
+                merged_measurements[date_key]['weight'] = m['weight']
+        
+        result = list(merged_measurements.values())
+        result.sort(key=lambda x: x['date'])
+        
+        return result, None
         
     except json.JSONDecodeError as e:
         return [], f"Failed to parse response from AI: {str(e)}"
     except Exception as e:
         return [], f"Error extracting measurements: {str(e)}"
-
-def process_uploaded_file(uploaded_file, api_key):
-    """
-    Process an uploaded file (image or PDF) and extract measurements.
-    Returns list of measurements and any error message.
-    """
-    file_bytes = uploaded_file.read()
-    uploaded_file.seek(0)  # Reset file pointer
-    
-    file_type = uploaded_file.type
-    all_measurements = []
-    errors = []
-    
-    if file_type == "application/pdf":
-        # Extract images from PDF pages
-        try:
-            images = extract_pdf_images(file_bytes)
-            if not images:
-                return [], "No pages found in PDF"
-            
-            for i, img_bytes in enumerate(images):
-                measurements, error = extract_measurements_from_image(img_bytes, api_key)
-                if error:
-                    errors.append(f"Page {i+1}: {error}")
-                else:
-                    all_measurements.extend(measurements)
-        except Exception as e:
-            return [], f"Error processing PDF: {str(e)}"
-    else:
-        # Process as image
-        measurements, error = extract_measurements_from_image(file_bytes, api_key)
-        if error:
-            return [], error
-        all_measurements = measurements
-    
-    # Merge duplicates based on date - combine height/weight from same-date entries
-    merged_measurements = {}
-    for m in all_measurements:
-        date_key = m['date']
-        if date_key not in merged_measurements:
-            merged_measurements[date_key] = {'date': date_key, 'height': None, 'weight': None}
-        
-        # Prefer non-null values when merging
-        if m.get('height') is not None:
-            merged_measurements[date_key]['height'] = m['height']
-        if m.get('weight') is not None:
-            merged_measurements[date_key]['weight'] = m['weight']
-    
-    unique_measurements = list(merged_measurements.values())
-    
-    # Sort by date
-    unique_measurements.sort(key=lambda x: x['date'])
-    
-    error_msg = "; ".join(errors) if errors else None
-    return unique_measurements, error_msg
 
 @st.cache_data
 def load_growth_data_from_csv(filename, data_source='WHO'):
@@ -904,7 +852,9 @@ with import_tab2:
             if 'last_image_file' not in st.session_state or st.session_state.last_image_file != image_file_id:
                 if st.button("🔍 Extract Measurements", type="primary", key="extract_btn"):
                     with st.spinner("Analyzing document with AI..."):
-                        measurements, error = process_uploaded_file(image_file, gemini_api_key)
+                        file_bytes = image_file.read()
+                        image_file.seek(0)
+                        measurements, error = extract_measurements_from_file(file_bytes, image_file.type, gemini_api_key)
                         
                         if error:
                             st.error(f"❌ {error}")

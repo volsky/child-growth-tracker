@@ -136,4 +136,3 @@ The WHO growth standards data included in this app is simplified sample data for
 - numpy >= 1.24.0
 - scipy >= 1.11.0
 - google-generativeai >= 0.8.0 (for AI-powered data extraction)
-- PyMuPDF >= 1.24.0 (for PDF processing)
