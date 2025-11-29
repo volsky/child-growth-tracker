@@ -1234,8 +1234,8 @@ if st.session_state.child_info:
     # Add historical data points
     if st.session_state.data_points:
         df = pd.DataFrame(st.session_state.data_points)
-        # Filter to only include rows with valid height values
-        df_with_height = df[df['height'].notna()]
+        # Filter to only include rows with valid height values and sort by age
+        df_with_height = df[df['height'].notna()].sort_values('age')
         if not df_with_height.empty:
             fig_height.add_trace(go.Scatter(
                 x=df_with_height['age'],
@@ -1333,8 +1333,8 @@ if st.session_state.child_info:
         # Add historical data points
         if st.session_state.data_points:
             df = pd.DataFrame(st.session_state.data_points)
-            # Filter to only include rows with valid weight values
-            df_with_weight = df[df['weight'].notna()]
+            # Filter to only include rows with valid weight values and sort by age
+            df_with_weight = df[df['weight'].notna()].sort_values('age')
             if not df_with_weight.empty:
                 fig_weight.add_trace(go.Scatter(
                     x=df_with_weight['age'],
@@ -1447,7 +1447,8 @@ if st.session_state.child_info:
             if st.session_state.data_points:
                 df = pd.DataFrame(st.session_state.data_points)
                 if 'bmi' in df.columns:
-                    df_with_bmi = df[df['bmi'].notna()]
+                    # Filter to only include rows with valid BMI values and sort by age
+                    df_with_bmi = df[df['bmi'].notna()].sort_values('age')
                     if not df_with_bmi.empty:
                         fig_bmi.add_trace(go.Scatter(
                             x=df_with_bmi['age'],
