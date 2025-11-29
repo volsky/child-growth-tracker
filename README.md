@@ -21,6 +21,7 @@ A Streamlit web application for tracking child growth measurements and comparing
 - **Multi-point Tracking**: Add multiple historical measurements to track growth trends over time
 - **Visual Differentiation**: Today's measurements displayed as red stars, historical data as blue circles
 - **Gender-specific**: Separate charts and percentiles for male and female children
+- **AI-Powered Data Extraction**: Extract historical measurements from images or PDFs using Google Gemini AI
 - **Age Range**:
   - WHO:
     - Height-for-age: 0-228 months (0-19 years)
@@ -88,6 +89,14 @@ streamlit run child_growth_app.py
 
 8. Use "Clear All" to remove all historical data points
 
+9. **Import from Image/PDF** (Import Data tab):
+   - Switch to the "Extract from Image/PDF" tab
+   - Enter your Google Gemini API key (get one free at https://makersuite.google.com/app/apikey)
+   - Upload an image or PDF containing growth measurements (e.g., medical records, growth charts)
+   - Click "Extract Measurements" to let the AI analyze the document
+   - Review and edit the extracted measurements
+   - Click "Import All" to add them to your historical data
+
 ## Data Points Visualization
 
 - **Red stars**: Today's measurements (prominently displayed)
@@ -126,3 +135,4 @@ The WHO growth standards data included in this app is simplified sample data for
 - plotly >= 5.17.0
 - numpy >= 1.24.0
 - scipy >= 1.11.0
+- google-generativeai >= 0.8.0 (for AI-powered data extraction)
