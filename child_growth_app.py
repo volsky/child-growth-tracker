@@ -69,9 +69,20 @@ Example output:
 If no measurements are found, return an empty array: []
 Return ONLY the JSON array, no additional text."""
 
+        # Detect image MIME type from magic bytes
+        mime_type = "image/jpeg"  # Default fallback
+        if image_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+            mime_type = "image/png"
+        elif image_bytes[:2] == b'\xff\xd8':
+            mime_type = "image/jpeg"
+        elif image_bytes[:6] in (b'GIF87a', b'GIF89a'):
+            mime_type = "image/gif"
+        elif image_bytes[:4] == b'RIFF' and image_bytes[8:12] == b'WEBP':
+            mime_type = "image/webp"
+        
         # Create image part for Gemini
         image_part = {
-            "mime_type": "image/png" if image_bytes[:8] == b'\x89PNG\r\n\x1a\n' else "image/jpeg",
+            "mime_type": mime_type,
             "data": image_bytes
         }
         
@@ -149,13 +160,20 @@ def process_uploaded_file(uploaded_file, api_key):
             return [], error
         all_measurements = measurements
     
-    # Remove duplicates based on date
-    seen_dates = set()
-    unique_measurements = []
+    # Merge duplicates based on date - combine height/weight from same-date entries
+    merged_measurements = {}
     for m in all_measurements:
-        if m['date'] not in seen_dates:
-            seen_dates.add(m['date'])
-            unique_measurements.append(m)
+        date_key = m['date']
+        if date_key not in merged_measurements:
+            merged_measurements[date_key] = {'date': date_key, 'height': None, 'weight': None}
+        
+        # Prefer non-null values when merging
+        if m.get('height') is not None:
+            merged_measurements[date_key]['height'] = m['height']
+        if m.get('weight') is not None:
+            merged_measurements[date_key]['weight'] = m['weight']
+    
+    unique_measurements = list(merged_measurements.values())
     
     # Sort by date
     unique_measurements.sort(key=lambda x: x['date'])
