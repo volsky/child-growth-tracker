@@ -23,6 +23,9 @@ wheels/
 .installed.cfg
 *.egg
 
+# Pytest
+.pytest_cache/
+
 # Streamlit (ignore secrets but keep config)
 .streamlit/secrets.toml
 .streamlit/credentials.toml
